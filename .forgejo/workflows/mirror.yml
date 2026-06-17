@@ -12,6 +12,9 @@ jobs:
       - name: Mirror to GitHub
         run: |
           set -euo pipefail
+          echo "GITHUB_REPOSITORY=${GITHUB_REPOSITORY}"
+          echo "GITHUB_SERVER_URL=${GITHUB_SERVER_URL:-unset}"
+          git config --list --global | grep -E "url|insteadOf" || echo "(no url rewrites)"
           git clone --mirror "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" repo.git
           cd repo.git
           git push --prune \
