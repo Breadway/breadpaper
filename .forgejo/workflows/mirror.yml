@@ -14,7 +14,9 @@ jobs:
           set -euo pipefail
           echo "GITHUB_REPOSITORY=${GITHUB_REPOSITORY}"
           echo "GITHUB_SERVER_URL=${GITHUB_SERVER_URL:-unset}"
-          git config --list --global | grep -E "url|insteadOf" || echo "(no url rewrites)"
+          env | grep -iE "^GIT" | sort || echo "(no GIT env vars)"
+          git config --list --global | grep -E "url|insteadOf" || echo "(no url rewrites in global gitconfig)"
+          git config --list --system 2>/dev/null | grep -E "url|insteadOf" || echo "(no url rewrites in system gitconfig)"
           git clone --mirror "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" repo.git
           cd repo.git
           git push --prune \
