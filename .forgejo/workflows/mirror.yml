@@ -14,11 +14,7 @@ jobs:
           set -euo pipefail
           echo "GITHUB_REPOSITORY=${GITHUB_REPOSITORY}"
           echo "GITHUB_SERVER_URL=${GITHUB_SERVER_URL:-unset}"
-          echo "=== workspace git config ==="
-          cat "${GITHUB_WORKSPACE}/.git/config" 2>/dev/null || echo "(no workspace .git/config)"
-          echo "=== all git config ==="
-          git config --list 2>/dev/null | grep -E "url|insteadOf" || echo "(no url rewrites anywhere)"
-          git clone --mirror "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" repo.git
+          GIT_CURL_VERBOSE=1 git clone --mirror "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" repo.git 2>&1 | head -40 || true
           cd repo.git
           git push --prune \
             "https://x-access-token:${{ secrets.MIRROR_TOKEN }}@github.com/Breadway/breadpaper.git" \
