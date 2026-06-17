@@ -5,13 +5,13 @@ use anyhow::{Context, Result, bail};
 
 pub fn apply(path: &Path) -> Result<()> {
     let status = Command::new("awww")
-        .arg("set")
+        .arg("img")
         .arg(path)
         .status()
         .context("failed to run awww — is awww-daemon running?")?;
 
     if !status.success() {
-        bail!("awww set exited with {}", status);
+        bail!("awww img exited with {}", status);
     }
     Ok(())
 }
