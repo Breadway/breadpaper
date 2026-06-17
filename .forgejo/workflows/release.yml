@@ -6,7 +6,7 @@ on:
 
 env:
   DL_DIR: /srv/breadway-dl
-  ECOSYSTEM_DIR: /home/breadway/Projects/bread-ecosystem
+  ECOSYSTEM_DIR: /tmp/bread-ecosystem-ci
   PATH: /home/breadway/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 jobs:
@@ -45,12 +45,8 @@ jobs:
       - name: ensure bread-ecosystem
         working-directory: /tmp
         run: |
-          if [[ -d "${ECOSYSTEM_DIR}/.git" ]]; then
-            git -C "${ECOSYSTEM_DIR}" pull --ff-only
-          else
-            mkdir -p "$(dirname "${ECOSYSTEM_DIR}")"
-            git clone https://github.com/Breadway/bread-ecosystem.git "${ECOSYSTEM_DIR}"
-          fi
+          rm -rf "${ECOSYSTEM_DIR}"
+          git clone https://github.com/Breadway/bread-ecosystem.git "${ECOSYSTEM_DIR}"
 
       - name: regenerate index.json
         working-directory: /tmp
