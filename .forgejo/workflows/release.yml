@@ -10,7 +10,7 @@ env:
 
 jobs:
   build:
-    runs-on: [self-hosted, hestia]
+    runs-on: hestia-host
     steps:
       - name: checkout
         run: |
