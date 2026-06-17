@@ -8,8 +8,9 @@ arch=('x86_64')
 url="https://github.com/Breadway/breadpaper"
 license=('MIT')
 options=(!lto !debug)
-depends=('glibc' 'python-pywal')
+depends=('glibc')
 optdepends=(
+  'python-pywal: colour palette generation from wallpaper (AUR)'
   'awww: Wayland wallpaper daemon'
 )
 makedepends=('rust' 'cargo')
