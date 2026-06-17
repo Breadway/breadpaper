@@ -7,6 +7,7 @@ on:
 env:
   DL_DIR: /srv/breadway-dl
   ECOSYSTEM_DIR: /home/breadway/Projects/bread-ecosystem
+  PATH: /home/breadway/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 jobs:
   build:
