@@ -12,9 +12,7 @@ jobs:
       - name: Mirror to GitHub
         run: |
           set -euo pipefail
-          echo "GITHUB_REPOSITORY=${GITHUB_REPOSITORY}"
-          echo "GITHUB_SERVER_URL=${GITHUB_SERVER_URL:-unset}"
-          GIT_CURL_VERBOSE=1 git clone --mirror "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" repo.git 2>&1 | head -40 || true
+          git clone --mirror "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" repo.git
           cd repo.git
           git push --prune \
             "https://x-access-token:${{ secrets.MIRROR_TOKEN }}@github.com/Breadway/breadpaper.git" \

@@ -4,9 +4,6 @@ on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write
-
 env:
   DL_DIR: /srv/breadway-dl
   ECOSYSTEM_DIR: /home/breadway/Projects/bread-ecosystem
@@ -46,16 +43,3 @@ jobs:
 
       - name: regenerate index.json
         run: bash "${ECOSYSTEM_DIR}/scripts/gen-index.sh"
-
-      - name: upload to GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          PKG_DIR="${DL_DIR}/breadpaper/${VERSION}"
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "breadpaper v${VERSION}" --generate-notes 2>/dev/null || true
-          gh release upload "${GITHUB_REF_NAME}" \
-            "${PKG_DIR}/breadpaper-x86_64" \
-            "${PKG_DIR}/breadpaper-x86_64.sha256" \
-            --clobber
