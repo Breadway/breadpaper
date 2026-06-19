@@ -4,7 +4,11 @@ use std::process;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "breadpaper", version, about = "Wallpaper manager for the bread desktop")]
+#[command(
+    name = "breadpaper",
+    version,
+    about = "Wallpaper manager for the bread desktop"
+)]
 struct Cli {
     /// Image file to set as wallpaper (shorthand for `set`)
     path: Option<PathBuf>,
@@ -16,9 +20,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Set wallpaper, generate pywal palette, and reload bread themes
-    Set {
-        path: PathBuf,
-    },
+    Set { path: PathBuf },
     /// Print the current wallpaper path
     Get,
 }
