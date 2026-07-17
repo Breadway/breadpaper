@@ -1,15 +1,12 @@
-use std::process::Command;
+use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 
 pub fn reload() -> Result<()> {
-    let status = Command::new("bread-theme")
-        .arg("reload")
-        .status()
-        .context("failed to run bread-theme — is it installed?")?;
-
-    if !status.success() {
-        bail!("bread-theme reload exited with {}", status);
+    // Was a bare Command::new("bread-theme").status() with no timeout.
+    let out = bread_utils::proc::run("bread-theme", &["reload"], Duration::from_secs(5));
+    if !out.success {
+        bail!("bread-theme reload failed (is it installed?): {}", out.stderr.trim());
     }
     Ok(())
 }

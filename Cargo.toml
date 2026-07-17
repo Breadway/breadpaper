@@ -8,3 +8,5 @@ license = "MIT"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
+# TODO(owner): switch to tag-pinned git dependency once bread-utils is merged and tagged, matching the bread-theme pattern
+bread-utils = { path = "../bread-ecosystem-fix-worktree/bread-utils" }
