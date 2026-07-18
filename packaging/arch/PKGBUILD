@@ -1,11 +1,11 @@
-# Maintainer: Breadway <rileyhorsham@gmail.com>
+# Maintainer: Breadway <plasticbread849@gmail.com>
 
 pkgname=breadpaper
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Wallpaper manager for the bread desktop"
 arch=('x86_64')
-url="https://github.com/Breadway/breadpaper"
+url="https://git.breadway.dev/Breadway/breadpaper"
 license=('MIT')
 options=(!lto !debug)
 depends=('glibc')
