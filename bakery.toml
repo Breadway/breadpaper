@@ -4,6 +4,7 @@ binaries = ["breadpaper"]
 system_deps = ["python-pywal"]
 optional_system_deps = ["awww"]
 bread_deps = ["bread"]
+license_file = "LICENSE"
 
 [install]
 post_install = []
