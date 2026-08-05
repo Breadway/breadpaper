@@ -26,10 +26,10 @@ jobs:
             "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" /tmp/breadpaper-build
 
       - name: build
-        run: /home/breadway/.cargo/bin/cargo build --release --locked
+        run: bash ci/build.sh cargo build --release --locked
 
       - name: test
-        run: /home/breadway/.cargo/bin/cargo test --release --locked
+        run: bash ci/build.sh cargo test --release --locked
 
       - name: prepare artifacts
         run: |
