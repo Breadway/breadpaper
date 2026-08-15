@@ -42,6 +42,13 @@ breadpaper get             # print the current wallpaper path
 
 Supported formats: `png`, `jpg`, `jpeg`, `webp`, `gif`, `bmp`.
 
+## Bread events
+
+After a successful `set`, breadpaper emits `bread.paper.changed` if
+`breadd` is running (silent no-op if it isn't). There is no daemon and
+no command subscription — Lua modules should `bread.exec("breadpaper set …")`.
+See [EVENTS.md](EVENTS.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
