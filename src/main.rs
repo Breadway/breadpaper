@@ -21,6 +21,8 @@ enum Command {
     },
     /// Print the current wallpaper path
     Get,
+    /// Honor bread.command.paper.set until killed
+    Listen,
 }
 
 fn main() {
@@ -28,6 +30,7 @@ fn main() {
 
     let result = match (cli.command, cli.path) {
         (Some(Command::Set { path }), _) | (None, Some(path)) => breadpaper::set(&path),
+        (Some(Command::Listen), _) => breadpaper::listen(),
         (Some(Command::Get), _) | (None, None) => {
             breadpaper::get().map(|p| println!("{}", p.display()))
         }
