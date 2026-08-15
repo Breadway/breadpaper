@@ -1,19 +1,34 @@
+mod config;
+mod library;
 mod pywal;
 mod theme;
+mod ui;
 mod wallpaper;
 
 use std::path::{Path, PathBuf};
+#[cfg(not(test))]
+use std::process::{Command, Stdio};
 use std::thread;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use bread_utils::bread_client::{BreadClient, BreadEvent};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
+
+pub use config::{Config, DEFAULT_SYSTEM_LIBRARY, DEFAULT_USER_LIBRARY};
+pub use library::{Wallpaper, scan};
 
 /// App id in bread's sibling-app registry (`KNOWN_APPS`). Events publish as
 /// `bread.paper.*`. See `EVENTS.md`.
 const APP_ID: &str = "paper";
 
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "bmp"];
+
+/// Open the GTK wallpaper library. Extra dirs are appended to the configured
+/// scan list (`~/.config/breadpaper/config.toml`, then defaults).
+pub fn library(extra_dirs: impl IntoIterator<Item = PathBuf>) -> Result<()> {
+    let cfg = Config::load().with_extra_dirs(extra_dirs);
+    ui::run(cfg.library_dirs)
+}
 
 pub fn set(path: &Path) -> Result<()> {
     let path = validate(path)?;
@@ -49,6 +64,7 @@ fn handle_command(event: BreadEvent) {
     };
     match verb {
         "set" => handle_set(&event.data),
+        "library" => handle_library(),
         other => {
             eprintln!("breadpaper: ignoring unrecognized command verb '{other}'");
         }
@@ -81,6 +97,46 @@ fn handle_set(data: &Value) {
             );
         }
     }
+}
+
+fn handle_library() {
+    let client = BreadClient::connect(APP_ID);
+    match open_library() {
+        Ok(()) => client.emit("bread.paper.library.done", json!({})),
+        Err(e) => {
+            eprintln!("breadpaper: bread.command.paper.library failed: {e:#}");
+            client.emit(
+                "bread.paper.library.failed",
+                json!({ "error": format!("{e:#}") }),
+            );
+        }
+    }
+}
+
+/// Spawn a one-shot `breadpaper library` so the listen loop can stay a
+/// park() thread. GTK needs its own process (and argv) — mixing it into
+/// `listen` would steal the main thread.
+fn open_library() -> Result<()> {
+    spawn_library()
+}
+
+#[cfg(not(test))]
+fn spawn_library() -> Result<()> {
+    let exe = std::env::current_exe().context("cannot resolve breadpaper executable")?;
+    Command::new(exe)
+        .arg("library")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .context("failed to spawn breadpaper library")?;
+    Ok(())
+}
+
+#[cfg(test)]
+fn spawn_library() -> Result<()> {
+    // cargo test's current_exe is the test harness, not breadpaper.
+    Ok(())
 }
 
 pub fn get() -> Result<PathBuf> {
@@ -172,5 +228,14 @@ mod tests {
     fn handle_set_missing_path_is_silent_without_breadd() {
         handle_set(&json!({}));
         handle_set(&json!({ "path": 1 }));
+    }
+
+    #[test]
+    fn handle_command_library_is_silent_without_breadd() {
+        handle_command(BreadEvent {
+            event: "bread.command.paper.library".into(),
+            timestamp: 0,
+            data: json!({}),
+        });
     }
 }

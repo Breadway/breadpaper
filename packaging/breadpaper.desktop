@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Wallpapers
+Comment=Browse and apply wallpapers on the Bread desktop
+Exec=breadpaper library
+Icon=preferences-desktop-wallpaper
+Terminal=false
+Type=Application
+Categories=Settings;DesktopSettings;
+StartupWMClass=com.breadway.breadpaper

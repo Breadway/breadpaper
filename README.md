@@ -5,9 +5,9 @@ via [awww](https://github.com/heywoodlh/awww), generates a palette with
 [pywal](https://github.com/dylanaraps/pywal) (`wal`), and runs
 `bread-theme reload`.
 
-It is not a wallpaper library, a slideshow daemon, or a GUI. Browsing
-`~/Pictures/Backgrounds` and picking an image lives in
-[bos-settings](https://git.breadway.dev/Breadway/bos-settings).
+`set` / `get` stay one-shot CLI. `breadpaper library` (alias `browse`)
+opens a GTK picker over the wallpaper directories. It is not a slideshow
+daemon.
 
 ## Dependencies
 
@@ -17,7 +17,8 @@ Must be on `$PATH` for `set`:
 - `wal` — palette generation (`python-pywal`)
 - `bread-theme` — theme reload (bakery package, not `breadd`)
 
-`get` only reads the path pywal stored at `~/.cache/wal/wal`.
+`library` also needs GTK4 (the window loads `bread-theme`'s shared
+stylesheet). `get` only reads the path pywal stored at `~/.cache/wal/wal`.
 
 ## Install
 
@@ -38,18 +39,41 @@ install -Dm755 target/release/breadpaper ~/.local/bin/breadpaper
 breadpaper <path>          # shorthand for `set`
 breadpaper set <path>      # awww + wal + bread-theme reload
 breadpaper get             # print the current wallpaper path
-breadpaper listen          # honor bread.command.paper.set (fail-silent if breadd is down)
+breadpaper library         # GTK picker (alias: browse)
+breadpaper library --dir PATH   # also scan PATH (repeatable)
+breadpaper listen          # honor bread.command.paper.set / .library
 ```
 
 Supported formats: `png`, `jpg`, `jpeg`, `webp`, `gif`, `bmp`.
+
+## Library
+
+`breadpaper library` scans these directories (missing ones are skipped):
+
+1. `~/Pictures/Wallpapers`
+2. `/usr/share/backgrounds/bos`
+
+Override the list in `~/.config/breadpaper/config.toml`:
+
+```toml
+library_dirs = [
+    "~/Pictures/Wallpapers",
+    "/usr/share/backgrounds/bos",
+]
+```
+
+`BREADPAPER_LIBRARY_DIRS` (colon-separated) overrides the file. `--dir`
+appends extra roots for that invocation. Clicking a thumbnail runs the
+same `set` path as the CLI.
 
 ## Bread events
 
 After a successful `set`, breadpaper emits `bread.paper.changed` if
 `breadd` is running (silent no-op if it isn't). `breadpaper listen` is
-the optional long-running subscriber for `bread.command.paper.set`; it
-does not start by itself. Lua modules can still
-`bread.exec("breadpaper set …")`. See [EVENTS.md](EVENTS.md).
+the optional long-running subscriber for `bread.command.paper.set` and
+`bread.command.paper.library`; it does not start by itself. Lua modules
+can still `bread.exec("breadpaper set …")` or
+`bread.exec("breadpaper library")`. See [EVENTS.md](EVENTS.md).
 
 ## License
 

@@ -1,0 +1,6 @@
+# ~/.config/breadpaper/config.toml
+# Missing directories are skipped. An empty list uses the built-in defaults.
+library_dirs = [
+    "~/Pictures/Wallpapers",
+    "/usr/share/backgrounds/bos",
+]

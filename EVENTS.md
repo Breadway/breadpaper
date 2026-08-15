@@ -4,7 +4,7 @@ breadpaper is a wallpaper setter: it works exactly the same with or
 without `breadd` running. When breadd *is* present, a successful
 `breadpaper set` (or the bare-path shorthand) publishes `bread.paper.changed`
 into the shared bread automation fabric, and `breadpaper listen` honors
-`bread.command.paper.set`. See the parent `bread` repo's
+`bread.command.paper.set` and `bread.command.paper.library`. See the parent `bread` repo's
 `Documentation.md` — specifically its "Namespaces" and "Integrating a
 bread\* app" sections — for the general convention this follows.
 
@@ -15,9 +15,9 @@ long-running `listen` subcommand holds a `subscribe` open.
 
 `breadpaper listen` is fail-silent if breadd is down: `subscribe`
 reconnects with backoff and simply delivers nothing until the daemon
-comes back. The one-shot `set`/`get` path does not require `listen`.
-Modules that want to change the wallpaper without a listener can still
-shell out:
+comes back. The one-shot `set`/`get`/`library` path does not require
+`listen`. Modules that want to change the wallpaper without a listener
+can still shell out:
 
 ```lua
 bread.exec("breadpaper set /path/to/image.png")
@@ -38,6 +38,8 @@ bread.wait("bread.paper.set.done", { timeout = 10000 })
 | `bread.paper.changed` | `{ "path": "<wallpaper>" }` | After a successful `set` (awww + wal + `bread-theme reload`), including when `listen` honors `bread.command.paper.set`. `path` is the canonical absolute path that was applied. Not emitted on `get`, and not emitted if any of the three steps fail. |
 | `bread.paper.set.done` | `{ "path": "<wallpaper>" }` | `bread.command.paper.set` was received and `set()` succeeded. `path` is the canonical absolute path that was applied. Not emitted by the one-shot CLI `set` — that path only publishes `changed`. |
 | `bread.paper.set.failed` | `{ "error": "<message>", "path"?: "<requested>" }` | `bread.command.paper.set` was received but `set()` failed, or `data.path` was missing/not a string. `path` is the requested (not canonical) path when one was supplied. |
+| `bread.paper.library.done` | `{}` | `bread.command.paper.library` was received and a `breadpaper library` process was started. Not emitted by the one-shot CLI `library` / `browse`. |
+| `bread.paper.library.failed` | `{ "error": "<message>" }` | `bread.command.paper.library` was received but the library process could not be spawned. |
 
 ## Commands honored (`bread.command.paper.*`)
 
@@ -48,13 +50,13 @@ Honored only while `breadpaper listen` is running. A
 | Verb | Data | Effect |
 |------|------|--------|
 | `set` | `{ "path": "..." }` | Calls the existing `set()` (awww + wal + `bread-theme reload`). Emits `bread.paper.set.done` / `.failed`. A successful set also emits `bread.paper.changed`. |
+| `library` | `{}` | Spawns `breadpaper library` (GTK picker). Emits `bread.paper.library.done` once the process is started, or `bread.paper.library.failed` if the spawn fails. Clicking a thumbnail in that window is a normal `set` and publishes `bread.paper.changed`. |
 
-### Not implemented: slideshow / library / random / next
+### Not implemented: slideshow / random / next
 
-breadpaper is not a wallpaper library, a slideshow daemon, or a picker.
-Browsing `~/Pictures/Backgrounds` lives in bos-settings. Do not invent
+`breadpaper library` / `browse` is the in-app picker. Do not invent
 `bread.command.paper.next` / `.random` / `.cycle` (or matching events)
-ahead of a real product feature. Unrecognized verbs are ignored.
+ahead of a real slideshow feature. Unrecognized verbs are ignored.
 
 ## Fail-safe behavior
 
