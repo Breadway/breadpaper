@@ -118,6 +118,7 @@ fn present(app: &Application, dirs: Vec<PathBuf>) {
     root.append(&stack);
 
     window.set_child(Some(&root));
+    bread_theme::gtk::bind_window_auto(&window);
 
     let dirs = Rc::new(dirs);
     let reload = {
@@ -127,6 +128,7 @@ fn present(app: &Application, dirs: Vec<PathBuf>) {
         let status = status.clone();
         let stack = stack.clone();
         let empty = empty.clone();
+        let window = window.clone();
         Rc::new(move || {
             let papers = library::scan(&dirs);
             summary.set_text(&dirs_summary(&dirs, papers.len()));
@@ -136,28 +138,42 @@ fn present(app: &Application, dirs: Vec<PathBuf>) {
             } else {
                 stack.set_visible_child_name("grid");
             }
-            fill_grid(&flow, &papers, &status);
+            fill_grid(&flow, &papers, &status, &window);
         })
     };
 
+    window.present();
     reload();
     {
         let reload = reload.clone();
         refresh.connect_clicked(move |_| reload());
     }
-
-    window.present();
 }
 
-fn fill_grid(flow: &FlowBox, papers: &[Wallpaper], status: &Label) {
+fn fill_grid(flow: &FlowBox, papers: &[Wallpaper], status: &Label, host: &impl IsA<gtk4::Widget>) {
     while let Some(child) = flow.first_child() {
         flow.remove(&child);
     }
-    let current = crate::get().ok();
+    let current = current_path_for(host);
     for paper in papers {
         let is_current = current.as_deref() == Some(paper.path.as_path());
         flow.insert(&tile(paper, is_current, flow, status), -1);
     }
+}
+
+fn current_path_for(widget: &impl IsA<gtk4::Widget>) -> Option<PathBuf> {
+    target_output(widget)
+        .and_then(|output| {
+            crate::current::Current::load()
+                .get_output(&output)
+                .map(Path::to_path_buf)
+        })
+        .or_else(|| crate::get().ok())
+}
+
+fn target_output(widget: &impl IsA<gtk4::Widget>) -> Option<String> {
+    bread_theme::gtk::output_for_widget(widget)
+        .or_else(|| bread_utils::hypr::focused_monitor().map(|m| m.name))
 }
 
 fn tile(paper: &Wallpaper, is_current: bool, flow: &FlowBox, status: &Label) -> Button {
@@ -189,7 +205,11 @@ fn tile(paper: &Wallpaper, is_current: bool, flow: &FlowBox, status: &Label) -> 
             return;
         }
         clicked.set_sensitive(false);
-        status.set_text(&format!("Applying {pretty}…"));
+        let output = target_output(clicked);
+        status.set_text(&match output.as_deref() {
+            Some(name) => format!("Applying {pretty} on {name}…"),
+            None => format!("Applying {pretty}…"),
+        });
         let path = path.clone();
         let pretty = pretty.clone();
         let status = status.clone();
@@ -197,11 +217,19 @@ fn tile(paper: &Wallpaper, is_current: bool, flow: &FlowBox, status: &Label) -> 
         let clicked = clicked.clone();
         gtk4::glib::spawn_future_local(async move {
             let path_thread = path.clone();
-            let result = gtk4::gio::spawn_blocking(move || crate::set(&path_thread)).await;
+            let output_thread = output.clone();
+            let result = gtk4::gio::spawn_blocking(move || match output_thread.as_deref() {
+                Some(name) => crate::set_on(&path_thread, name),
+                None => crate::set(&path_thread),
+            })
+            .await;
             clicked.set_sensitive(true);
             match result {
                 Ok(Ok(())) => {
-                    status.set_text(&format!("Applied {pretty}"));
+                    status.set_text(&match output.as_deref() {
+                        Some(name) => format!("Applied {pretty} on {name}"),
+                        None => format!("Applied {pretty}"),
+                    });
                     mark_current(&flow, &path);
                 }
                 Ok(Err(e)) => status.set_text(&format!("{e:#}")),

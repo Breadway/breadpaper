@@ -1,4 +1,5 @@
 mod config;
+mod current;
 mod library;
 mod pywal;
 mod theme;
@@ -30,12 +31,101 @@ pub fn library(extra_dirs: impl IntoIterator<Item = PathBuf>) -> Result<()> {
     ui::run(cfg.library_dirs)
 }
 
+/// Set wallpaper + global pywal palette on every live output.
 pub fn set(path: &Path) -> Result<()> {
     let path = validate(path)?;
     apply_wallpaper(&path)?;
     generate_palette(&path)?;
     reload_theme()?;
-    emit_changed(&path);
+
+    let mut cur = current::Current::load();
+    if cur.all().is_empty() {
+        let live = live_outputs();
+        if live.is_empty() {
+            cur.set_output("*", path.clone());
+        } else {
+            for output in live {
+                cur.set_output(output, path.clone());
+            }
+        }
+    } else {
+        let keys: Vec<String> = cur.all().keys().cloned().collect();
+        for output in keys {
+            cur.set_output(output, path.clone());
+        }
+    }
+    cur.save()?;
+
+    for output in cur.all().keys() {
+        if output != "*" {
+            theme::generate_for_output(output, &path)?;
+        }
+    }
+
+    emit_changed(&path, None);
+    Ok(())
+}
+
+/// Set wallpaper + per-output theme on a single compositor output.
+///
+/// Does not run global `wal -i`. If `output` is the focused Hyprland
+/// monitor, the shared stylesheet is updated from that output's palette
+/// so unbound apps match the focused screen.
+pub fn set_on(path: &Path, output: &str) -> Result<()> {
+    if output.is_empty() {
+        bail!("output name is empty");
+    }
+    let path = validate(path)?;
+    wallpaper::apply_on(&path, output)?;
+    let palette = theme::generate_for_output(output, &path)?;
+
+    let mut cur = current::Current::load();
+    cur.set_output(output, path.clone());
+    cur.save()?;
+
+    if is_focused_output(output) {
+        theme::write_shared_from(&palette)?;
+    }
+
+    emit_changed(&path, Some(output));
+    Ok(())
+}
+
+/// Re-apply every wallpaper + per-output theme stored in current.json.
+pub fn apply_saved() -> Result<()> {
+    let cur = current::Current::load();
+    let mut first_err = None;
+    for (output, path) in cur.all() {
+        let result = restore_one(output, path);
+        match result {
+            Ok(()) => {
+                let name = (output != "*").then_some(output.as_str());
+                emit_changed(path, name);
+            }
+            Err(e) => {
+                eprintln!("breadpaper: apply {output}: {e:#}");
+                if first_err.is_none() {
+                    first_err = Some(e);
+                }
+            }
+        }
+    }
+    match first_err {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
+fn restore_one(output: &str, path: &Path) -> Result<()> {
+    if output == "*" {
+        wallpaper::apply(path)?;
+        return Ok(());
+    }
+    wallpaper::apply_on(path, output)?;
+    let palette = theme::generate_for_output(output, path)?;
+    if is_focused_output(output) {
+        theme::write_shared_from(&palette)?;
+    }
     Ok(())
 }
 
@@ -44,6 +134,11 @@ pub fn set(path: &Path) -> Result<()> {
 pub fn listen() -> Result<()> {
     let client = BreadClient::connect(APP_ID);
     let _subscription = client.subscribe("bread.command.paper.**", handle_command);
+    let _monitors = client.subscribe("bread.monitor.connected", |_| {
+        if let Err(e) = apply_saved() {
+            eprintln!("breadpaper: apply_saved on monitor connect failed: {e:#}");
+        }
+    });
     loop {
         thread::park();
     }
@@ -51,11 +146,14 @@ pub fn listen() -> Result<()> {
 
 /// Fire-and-forget `bread.paper.changed`. Silent no-op if breadd is down
 /// (`BreadClient::emit` never blocks or errors the caller).
-fn emit_changed(path: &Path) {
-    BreadClient::connect(APP_ID).emit(
-        "bread.paper.changed",
-        json!({ "path": path.to_string_lossy() }),
-    );
+///
+/// `output` is `None` when the wallpaper was applied to every output.
+fn emit_changed(path: &Path, output: Option<&str>) {
+    let mut data = json!({ "path": path.to_string_lossy() });
+    if let Some(name) = output {
+        data["output"] = json!(name);
+    }
+    BreadClient::connect(APP_ID).emit("bread.paper.changed", data);
 }
 
 fn handle_command(event: BreadEvent) {
@@ -80,21 +178,31 @@ fn handle_set(data: &Value) {
         );
         return;
     };
+    let output = data.get("output").and_then(Value::as_str);
     let path = Path::new(path_str);
-    match set(path) {
+    let result = match output {
+        Some(name) => set_on(path, name),
+        None => set(path),
+    };
+    match result {
         Ok(()) => {
             let applied = path
                 .canonicalize()
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_else(|_| path_str.to_string());
-            client.emit("bread.paper.set.done", json!({ "path": applied }));
+            let mut payload = json!({ "path": applied });
+            if let Some(name) = output {
+                payload["output"] = json!(name);
+            }
+            client.emit("bread.paper.set.done", payload);
         }
         Err(e) => {
             eprintln!("breadpaper: bread.command.paper.set failed: {e:#}");
-            client.emit(
-                "bread.paper.set.failed",
-                json!({ "error": format!("{e:#}"), "path": path_str }),
-            );
+            let mut payload = json!({ "error": format!("{e:#}"), "path": path_str });
+            if let Some(name) = output {
+                payload["output"] = json!(name);
+            }
+            client.emit("bread.paper.set.failed", payload);
         }
     }
 }
@@ -149,6 +257,14 @@ pub fn get() -> Result<PathBuf> {
     Ok(PathBuf::from(contents.trim()))
 }
 
+/// Wallpaper path last persisted for `output` in current.json.
+pub fn get_on(output: &str) -> Result<PathBuf> {
+    current::Current::load()
+        .get_output(output)
+        .map(Path::to_path_buf)
+        .with_context(|| format!("no wallpaper saved for output {output}"))
+}
+
 pub fn apply_wallpaper(path: &Path) -> Result<()> {
     wallpaper::apply(path)
 }
@@ -183,15 +299,52 @@ fn validate(path: &Path) -> Result<PathBuf> {
     Ok(canonical)
 }
 
+fn live_outputs() -> Vec<String> {
+    if let Some(names) = hypr_output_names() {
+        return names;
+    }
+    wallpaper::query_outputs()
+}
+
+fn hypr_output_names() -> Option<Vec<String>> {
+    let v = bread_utils::hypr::request_json("j/monitors")?;
+    let names: Vec<String> = v
+        .as_array()?
+        .iter()
+        .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(str::to_string))
+        .collect();
+    if names.is_empty() { None } else { Some(names) }
+}
+
+fn is_focused_output(output: &str) -> bool {
+    bread_utils::hypr::focused_monitor()
+        .map(|m| m.name == output)
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tmp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "breadpaper-lib-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[test]
     fn emit_changed_is_silent_without_breadd() {
         // BreadClient::emit must never panic or error just because the
         // socket is missing — this is the fail-silent contract.
-        emit_changed(Path::new("/tmp/wallpaper.png"));
+        emit_changed(Path::new("/tmp/wallpaper.png"), None);
+        emit_changed(Path::new("/tmp/wallpaper.png"), Some("eDP-1"));
     }
 
     #[test]
@@ -231,11 +384,46 @@ mod tests {
     }
 
     #[test]
+    fn handle_set_with_output_vs_without_is_silent_without_breadd() {
+        // Missing files fail in validate — never reaches awww/wal.
+        handle_set(&json!({ "path": "/no/such/breadpaper-wallpaper.png" }));
+        handle_set(&json!({
+            "path": "/no/such/breadpaper-wallpaper.png",
+            "output": "eDP-1"
+        }));
+    }
+
+    #[test]
     fn handle_command_library_is_silent_without_breadd() {
         handle_command(BreadEvent {
             event: "bread.command.paper.library".into(),
             timestamp: 0,
             data: json!({}),
         });
+    }
+
+    #[test]
+    fn validate_rejects_bad_extensions() {
+        let dir = tmp_dir("validate");
+        let txt = dir.join("notes.txt");
+        std::fs::write(&txt, b"x").unwrap();
+        assert!(validate(&txt).is_err());
+
+        let png = dir.join("ok.png");
+        std::fs::write(&png, b"x").unwrap();
+        assert_eq!(validate(&png).unwrap(), png.canonicalize().unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn handle_set_bad_extension_with_output_is_silent_without_breadd() {
+        let dir = tmp_dir("bad-ext");
+        let txt = dir.join("notes.txt");
+        std::fs::write(&txt, b"x").unwrap();
+        handle_set(&json!({
+            "path": txt.to_string_lossy(),
+            "output": "HDMI-A-1"
+        }));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

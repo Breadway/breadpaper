@@ -15,9 +15,10 @@ long-running `listen` subcommand holds a `subscribe` open.
 
 `breadpaper listen` is fail-silent if breadd is down: `subscribe`
 reconnects with backoff and simply delivers nothing until the daemon
-comes back. The one-shot `set`/`get`/`library` path does not require
-`listen`. Modules that want to change the wallpaper without a listener
-can still shell out:
+comes back. It also honors `bread.monitor.connected` by re-applying
+`~/.config/breadpaper/current.json`. The one-shot `set`/`get`/`library`
+/`apply` path does not require `listen`. Modules that want to change
+the wallpaper without a listener can still shell out:
 
 ```lua
 bread.exec("breadpaper set /path/to/image.png")
@@ -35,9 +36,9 @@ bread.wait("bread.paper.set.done", { timeout = 10000 })
 
 | Event | Data | When |
 |-------|------|------|
-| `bread.paper.changed` | `{ "path": "<wallpaper>" }` | After a successful `set` (awww + wal + `bread-theme reload`), including when `listen` honors `bread.command.paper.set`. `path` is the canonical absolute path that was applied. Not emitted on `get`, and not emitted if any of the three steps fail. |
-| `bread.paper.set.done` | `{ "path": "<wallpaper>" }` | `bread.command.paper.set` was received and `set()` succeeded. `path` is the canonical absolute path that was applied. Not emitted by the one-shot CLI `set` — that path only publishes `changed`. |
-| `bread.paper.set.failed` | `{ "error": "<message>", "path"?: "<requested>" }` | `bread.command.paper.set` was received but `set()` failed, or `data.path` was missing/not a string. `path` is the requested (not canonical) path when one was supplied. |
+| `bread.paper.changed` | `{ "path": "<wallpaper>", "output"?: "<name>" }` | After a successful `set` / `set --output` (awww + palette + theme write), including when `listen` honors `bread.command.paper.set` or restores `current.json` after `bread.monitor.connected`. `path` is the canonical absolute path that was applied. `output` is the compositor output name when only one monitor was targeted; omit (or `null`) means every output. Not emitted on `get`, and not emitted if the set fails. |
+| `bread.paper.set.done` | `{ "path": "<wallpaper>", "output"?: "<name>" }` | `bread.command.paper.set` was received and `set()` / `set_on()` succeeded. `path` is the canonical absolute path that was applied. `output` is present when the command targeted one monitor. Not emitted by the one-shot CLI `set` — that path only publishes `changed`. |
+| `bread.paper.set.failed` | `{ "error": "<message>", "path"?: "<requested>", "output"?: "<name>" }` | `bread.command.paper.set` was received but `set()` / `set_on()` failed, or `data.path` was missing/not a string. `path` is the requested (not canonical) path when one was supplied. `output` is echoed when the command included one. |
 | `bread.paper.library.done` | `{}` | `bread.command.paper.library` was received and a `breadpaper library` process was started. Not emitted by the one-shot CLI `library` / `browse`. |
 | `bread.paper.library.failed` | `{ "error": "<message>" }` | `bread.command.paper.library` was received but the library process could not be spawned. |
 
@@ -49,8 +50,8 @@ Honored only while `breadpaper listen` is running. A
 
 | Verb | Data | Effect |
 |------|------|--------|
-| `set` | `{ "path": "..." }` | Calls the existing `set()` (awww + wal + `bread-theme reload`). Emits `bread.paper.set.done` / `.failed`. A successful set also emits `bread.paper.changed`. |
-| `library` | `{}` | Spawns `breadpaper library` (GTK picker). Emits `bread.paper.library.done` once the process is started, or `bread.paper.library.failed` if the spawn fails. Clicking a thumbnail in that window is a normal `set` and publishes `bread.paper.changed`. |
+| `set` | `{ "path": "...", "output"?: "..." }` | Missing `output` calls `set()` (all live outputs, global `wal -i`, `bread-theme reload`). A string `output` calls `set_on()` (that monitor only; no global wal unless it is the focused Hyprland monitor). Emits `bread.paper.set.done` / `.failed`. A successful set also emits `bread.paper.changed`. |
+| `library` | `{}` | Spawns `breadpaper library` (GTK picker). Emits `bread.paper.library.done` once the process is started, or `bread.paper.library.failed` if the spawn fails. Clicking a thumbnail in that window applies to the picker's output and publishes `bread.paper.changed`. |
 
 ### Not implemented: slideshow / random / next
 

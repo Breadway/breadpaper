@@ -3,11 +3,13 @@
 Wallpaper setter for the bread desktop. One command sets the wallpaper
 via [awww](https://github.com/heywoodlh/awww), generates a palette with
 [pywal](https://github.com/dylanaraps/pywal) (`wal`), and runs
-`bread-theme reload`.
+`bread-theme reload`. Two monitors can keep different wallpapers (and
+per-output bread-theme files); the last path per output is stored in
+`~/.config/breadpaper/current.json`.
 
-`set` / `get` stay one-shot CLI. `breadpaper library` (alias `browse`)
-opens a GTK picker over the wallpaper directories. It is not a slideshow
-daemon.
+`set` / `get` / `apply` stay one-shot CLI. `breadpaper library` (alias
+`browse`) opens a GTK picker over the wallpaper directories. It is not
+a slideshow daemon.
 
 ## Dependencies
 
@@ -18,7 +20,9 @@ Must be on `$PATH` for `set`:
 - `bread-theme` — theme reload (bakery package, not `breadd`)
 
 `library` also needs GTK4 (the window loads `bread-theme`'s shared
-stylesheet). `get` only reads the path pywal stored at `~/.cache/wal/wal`.
+stylesheet and follows the monitor it sits on). `get` without
+`--output` still reads the path pywal stored at `~/.cache/wal/wal`.
+`get --output NAME` reads `~/.config/breadpaper/current.json`.
 
 ## Install
 
@@ -36,12 +40,16 @@ install -Dm755 target/release/breadpaper ~/.local/bin/breadpaper
 ## Usage
 
 ```
-breadpaper <path>          # shorthand for `set`
-breadpaper set <path>      # awww + wal + bread-theme reload
-breadpaper get             # print the current wallpaper path
-breadpaper library         # GTK picker (alias: browse)
-breadpaper library --dir PATH   # also scan PATH (repeatable)
-breadpaper listen          # honor bread.command.paper.set / .library
+breadpaper <path>                 # shorthand for `set` (all outputs)
+breadpaper <path> --output NAME   # one output
+breadpaper set <path>             # awww + wal + bread-theme reload (all)
+breadpaper set <path> --output NAME
+breadpaper get                    # print ~/.cache/wal/wal
+breadpaper get --output NAME      # path from current.json
+breadpaper apply                  # restore current.json
+breadpaper library                # GTK picker (alias: browse)
+breadpaper library --dir PATH     # also scan PATH (repeatable)
+breadpaper listen                 # honor bread.command.paper.set / .library
 ```
 
 Supported formats: `png`, `jpg`, `jpeg`, `webp`, `gif`, `bmp`.
@@ -63,8 +71,9 @@ library_dirs = [
 ```
 
 `BREADPAPER_LIBRARY_DIRS` (colon-separated) overrides the file. `--dir`
-appends extra roots for that invocation. Clicking a thumbnail runs the
-same `set` path as the CLI.
+appends extra roots for that invocation. Clicking a thumbnail applies
+to the monitor the picker is on (`set --output`); if the output cannot
+be resolved it falls back to all outputs.
 
 ## Bread events
 
