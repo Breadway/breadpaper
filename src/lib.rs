@@ -38,39 +38,98 @@ pub fn set(path: &Path) -> Result<()> {
     generate_palette(&path)?;
     reload_theme()?;
 
+    // A global set applies one palette to every output — the one `wal -i`
+    // just wrote to `~/.cache/wal`. Reuse it rather than re-running an
+    // isolated `wal -i` once per output for an identical result.
+    let palette = bread_theme::load_palette();
+
     let mut cur = current::Current::load();
-    if cur.all().is_empty() {
-        let live = live_outputs();
-        if live.is_empty() {
-            cur.set_output("*", path.clone());
-        } else {
-            for output in live {
-                cur.set_output(output, path.clone());
+
+    // Prune only from a compositor-authoritative list; the awww fallback is
+    // fine for *writing* per-output files but not for removal decisions.
+    let connected = hypr_output_names().filter(|names| !names.is_empty());
+    if let Some(ref names) = connected {
+        prune_disconnected_outputs(&mut cur, names);
+    }
+
+    // Write per-output files for every currently connected output, not just
+    // the ones already in current.json (a later-connected monitor would
+    // otherwise never get a file).
+    let targets: Vec<String> = match connected {
+        Some(names) => names,
+        None => {
+            let fallback = live_outputs();
+            if fallback.is_empty() {
+                cur.all()
+                    .keys()
+                    .filter(|k| k.as_str() != "*")
+                    .cloned()
+                    .collect()
+            } else {
+                fallback
             }
         }
+    };
+
+    if targets.is_empty() {
+        cur.set_output("*", path.clone());
     } else {
-        let keys: Vec<String> = cur.all().keys().cloned().collect();
-        for output in keys {
-            cur.set_output(output, path.clone());
+        for output in &targets {
+            cur.set_output(output.clone(), path.clone());
+            write_output_theme(output, &palette)?;
         }
     }
     cur.save()?;
-
-    for output in cur.all().keys() {
-        if output != "*" {
-            theme::generate_for_output(output, &path)?;
-        }
-    }
 
     emit_changed(&path, None);
     Ok(())
 }
 
+/// Write `palettes/<output>.json` + `themes/<output>.css` for a palette that
+/// is already known (no isolated `wal -i` re-run).
+fn write_output_theme(output: &str, palette: &bread_theme::Palette) -> Result<()> {
+    bread_theme::write_output_palette(output, palette)
+        .with_context(|| format!("write per-output palette for {output}"))?;
+    bread_theme::write_output_css(output, palette)
+        .with_context(|| format!("write per-output css for {output}"))?;
+    Ok(())
+}
+
+/// Persisted, non-wildcard outputs that are not in `connected`.
+fn stale_outputs(cur: &current::Current, connected: &[String]) -> Vec<String> {
+    cur.all()
+        .keys()
+        .filter(|k| k.as_str() != "*" && !connected.iter().any(|c| c == *k))
+        .cloned()
+        .collect()
+}
+
+/// Remove `current.json` entries and their `palettes/<out>.json` /
+/// `themes/<out>.css` files for outputs not in `connected`. Never touches the
+/// `"*"` wildcard entry.
+fn prune_disconnected_outputs(cur: &mut current::Current, connected: &[String]) {
+    for output in stale_outputs(cur, connected) {
+        cur.remove_output(&output);
+        for p in [
+            bread_theme::output_palette_path(&output),
+            bread_theme::output_css_path(&output),
+        ] {
+            match std::fs::remove_file(&p) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => eprintln!("breadpaper: prune {}: {e}", p.display()),
+            }
+        }
+    }
+}
+
 /// Set wallpaper + per-output theme on a single compositor output.
 ///
-/// Does not run global `wal -i`. If `output` is the focused Hyprland
-/// monitor, the shared stylesheet is updated from that output's palette
-/// so unbound apps match the focused screen.
+/// For a non-focused output this only writes that output's per-monitor
+/// files. If `output` is the focused Hyprland monitor it additionally
+/// syncs the session-global state (shared stylesheet + `~/.cache/wal`) from
+/// that output's palette, so unbound apps and app-specific chrome match the
+/// focused screen.
 pub fn set_on(path: &Path, output: &str) -> Result<()> {
     if output.is_empty() {
         bail!("output name is empty");
@@ -84,10 +143,23 @@ pub fn set_on(path: &Path, output: &str) -> Result<()> {
     cur.save()?;
 
     if is_focused_output(output) {
-        theme::write_shared_from(&palette)?;
+        sync_focused_global(&path, &palette)?;
     }
 
     emit_changed(&path, Some(output));
+    Ok(())
+}
+
+/// The focused monitor defines the session-global look, so sync BOTH the
+/// shared stylesheet AND pywal's global cache (`~/.cache/wal/colors.json`) to
+/// this output's palette. Every app rebuilds its own CSS from `load_palette()`
+/// (which reads that cache) when `theme.css` changes; without the cache sync
+/// its app-specific chrome keeps the previous palette while shared-sheet
+/// widgets move to the new one — a mixed palette. `set()` (global) already
+/// keeps the two in lockstep; this makes a focused `set_on` consistent.
+fn sync_focused_global(path: &Path, palette: &bread_theme::Palette) -> Result<()> {
+    generate_palette(path)?;
+    theme::write_shared_from(palette)?;
     Ok(())
 }
 
@@ -124,7 +196,7 @@ fn restore_one(output: &str, path: &Path) -> Result<()> {
     wallpaper::apply_on(path, output)?;
     let palette = theme::generate_for_output(output, path)?;
     if is_focused_output(output) {
-        theme::write_shared_from(&palette)?;
+        sync_focused_global(path, &palette)?;
     }
     Ok(())
 }
@@ -413,6 +485,26 @@ mod tests {
         std::fs::write(&png, b"x").unwrap();
         assert_eq!(validate(&png).unwrap(), png.canonicalize().unwrap());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stale_outputs_selects_absent_non_wildcard_entries_only() {
+        let mut cur = current::Current::default();
+        cur.set_output("*", "/abs/global.png");
+        cur.set_output("mon-a", "/abs/a.png");
+        cur.set_output("mon-b", "/abs/b.png");
+
+        // mon-b disconnected; "*" and the still-connected mon-a are kept.
+        let stale = stale_outputs(&cur, &["mon-a".to_string()]);
+        assert_eq!(stale, vec!["mon-b".to_string()]);
+    }
+
+    #[test]
+    fn stale_outputs_is_empty_when_all_connected() {
+        let mut cur = current::Current::default();
+        cur.set_output("mon-a", "/abs/a.png");
+        cur.set_output("mon-b", "/abs/b.png");
+        assert!(stale_outputs(&cur, &["mon-a".to_string(), "mon-b".to_string()]).is_empty());
     }
 
     #[test]
