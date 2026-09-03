@@ -47,6 +47,12 @@ impl Current {
         self.outputs.get(output).map(PathBuf::as_path)
     }
 
+    /// Drop a persisted output (e.g. a monitor that is no longer connected).
+    /// Returns whether an entry was removed.
+    pub fn remove_output(&mut self, output: &str) -> bool {
+        self.outputs.remove(output).is_some()
+    }
+
     pub fn all(&self) -> &BTreeMap<String, PathBuf> {
         &self.outputs
     }
