@@ -15,9 +15,9 @@ a slideshow daemon.
 
 Must be on `$PATH` for `set`:
 
-- `awww` — Wayland wallpaper (`awww img`)
-- `wal` — palette generation (`python-pywal`)
-- `bread-theme` — theme reload (bakery package, not `breadd`)
+- `awww`: Wayland wallpaper (`awww img`)
+- `wal`: palette generation (`python-pywal`)
+- `bread-theme`: theme reload (bakery package, not `breadd`)
 
 `library` also needs GTK4 (the window loads `bread-theme`'s shared
 stylesheet and follows the monitor it sits on). `get` without
@@ -86,4 +86,4 @@ can still `bread.exec("breadpaper set …")` or
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

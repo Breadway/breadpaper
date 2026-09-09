@@ -9,7 +9,7 @@ pub fn generate(path: &Path) -> Result<()> {
         .arg(path)
         .arg("-n") // skip wal's own wallpaper backend; awww already set it
         .status()
-        .context("failed to run wal — is python-pywal installed?")?;
+        .context("failed to run wal: is python-pywal installed?")?;
 
     if !status.success() {
         bail!("wal exited with {}", status);

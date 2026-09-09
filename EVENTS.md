@@ -1,15 +1,15 @@
-# breadpaper — bread event integration
+# breadpaper: bread event integration
 
 breadpaper is a wallpaper setter: it works exactly the same with or
 without `breadd` running. When breadd *is* present, a successful
 `breadpaper set` (or the bare-path shorthand) publishes `bread.paper.changed`
 into the shared bread automation fabric, and `breadpaper listen` honors
 `bread.command.paper.set` and `bread.command.paper.library`. See the parent `bread` repo's
-`Documentation.md` — specifically its "Namespaces" and "Integrating a
-bread\* app" sections — for the general convention this follows.
+`Documentation.md` (specifically its "Namespaces" and "Integrating a
+bread\* app" sections) for the general convention this follows.
 
 App id: **`paper`**. Transport: `bread-utils`'s `bread_client` module
-(feature `bread-client`) — the CLI links it directly. One-shot
+(feature `bread-client`); the CLI links it directly. One-shot
 `set`/`get` use `BreadClient::connect("paper")` + `emit` only. The
 long-running `listen` subcommand holds a `subscribe` open.
 
@@ -37,7 +37,7 @@ bread.wait("bread.paper.set.done", { timeout = 10000 })
 | Event | Data | When |
 |-------|------|------|
 | `bread.paper.changed` | `{ "path": "<wallpaper>", "output"?: "<name>" }` | After a successful `set` / `set --output` (awww + palette + theme write), including when `listen` honors `bread.command.paper.set` or restores `current.json` after `bread.monitor.connected`. `path` is the canonical absolute path that was applied. `output` is the compositor output name when only one monitor was targeted; omit (or `null`) means every output. Not emitted on `get`, and not emitted if the set fails. |
-| `bread.paper.set.done` | `{ "path": "<wallpaper>", "output"?: "<name>" }` | `bread.command.paper.set` was received and `set()` / `set_on()` succeeded. `path` is the canonical absolute path that was applied. `output` is present when the command targeted one monitor. Not emitted by the one-shot CLI `set` — that path only publishes `changed`. |
+| `bread.paper.set.done` | `{ "path": "<wallpaper>", "output"?: "<name>" }` | `bread.command.paper.set` was received and `set()` / `set_on()` succeeded. `path` is the canonical absolute path that was applied. `output` is present when the command targeted one monitor. Not emitted by the one-shot CLI `set`; that path only publishes `changed`. |
 | `bread.paper.set.failed` | `{ "error": "<message>", "path"?: "<requested>", "output"?: "<name>" }` | `bread.command.paper.set` was received but `set()` / `set_on()` failed, or `data.path` was missing/not a string. `path` is the requested (not canonical) path when one was supplied. `output` is echoed when the command included one. |
 | `bread.paper.library.done` | `{}` | `bread.command.paper.library` was received and a `breadpaper library` process was started. Not emitted by the one-shot CLI `library` / `browse`. |
 | `bread.paper.library.failed` | `{ "error": "<message>" }` | `bread.command.paper.library` was received but the library process could not be spawned. |
@@ -45,8 +45,8 @@ bread.wait("bread.paper.set.done", { timeout = 10000 })
 ## Commands honored (`bread.command.paper.*`)
 
 Honored only while `breadpaper listen` is running. A
-`bread-emit bread.command.paper.set` with no listener is a silent no-op
-— that is the documented bread convention, not a breadpaper bug.
+`bread-emit bread.command.paper.set` with no listener is a silent no-op;
+that is the documented bread convention, not a breadpaper bug.
 
 | Verb | Data | Effect |
 |------|------|--------|
@@ -62,7 +62,7 @@ ahead of a real slideshow feature. Unrecognized verbs are ignored.
 ## Fail-safe behavior
 
 - If breadd isn't installed or isn't running, `emit` is a silent no-op
-  (`BreadClient::emit` never blocks or errors the caller) — breadpaper
+  (`BreadClient::emit` never blocks or errors the caller); breadpaper
   still sets the wallpaper, generates the palette, and reloads themes.
 - `breadpaper listen` does not exit if breadd is down. The command
   subscription reconnects automatically (`BreadClient::subscribe`'s

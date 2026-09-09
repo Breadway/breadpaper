@@ -31,7 +31,7 @@ pub fn query_outputs() -> Vec<String> {
 fn run_awww(cmd: &mut Command) -> Result<()> {
     let status = cmd
         .status()
-        .context("failed to run awww — is awww-daemon running?")?;
+        .context("failed to run awww: is awww-daemon running?")?;
     if !status.success() {
         bail!("awww img exited with {}", status);
     }

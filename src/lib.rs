@@ -38,7 +38,7 @@ pub fn set(path: &Path) -> Result<()> {
     generate_palette(&path)?;
     reload_theme()?;
 
-    // A global set applies one palette to every output — the one `wal -i`
+    // A global set applies one palette to every output: the one `wal -i`
     // just wrote to `~/.cache/wal`. Reuse it rather than re-running an
     // isolated `wal -i` once per output for an identical result.
     let palette = bread_theme::load_palette();
@@ -155,7 +155,7 @@ pub fn set_on(path: &Path, output: &str) -> Result<()> {
 /// this output's palette. Every app rebuilds its own CSS from `load_palette()`
 /// (which reads that cache) when `theme.css` changes; without the cache sync
 /// its app-specific chrome keeps the previous palette while shared-sheet
-/// widgets move to the new one — a mixed palette. `set()` (global) already
+/// widgets move to the new one, a mixed palette. `set()` (global) already
 /// keeps the two in lockstep; this makes a focused `set_on` consistent.
 fn sync_focused_global(path: &Path, palette: &bread_theme::Palette) -> Result<()> {
     generate_palette(path)?;
@@ -202,7 +202,7 @@ fn restore_one(output: &str, path: &Path) -> Result<()> {
 }
 
 /// Honor `bread.command.paper.*` until killed. Subscribe reconnects with
-/// backoff if breadd is down or restarts — this never errors the caller.
+/// backoff if breadd is down or restarts; this never errors the caller.
 pub fn listen() -> Result<()> {
     let client = BreadClient::connect(APP_ID);
     let _subscription = client.subscribe("bread.command.paper.**", handle_command);
@@ -294,7 +294,7 @@ fn handle_library() {
 }
 
 /// Spawn a one-shot `breadpaper library` so the listen loop can stay a
-/// park() thread. GTK needs its own process (and argv) — mixing it into
+/// park() thread. GTK needs its own process (and argv); mixing it into
 /// `listen` would steal the main thread.
 fn open_library() -> Result<()> {
     spawn_library()
@@ -362,7 +362,7 @@ fn validate(path: &Path) -> Result<PathBuf> {
 
     if !IMAGE_EXTENSIONS.contains(&ext.as_str()) {
         bail!(
-            "unsupported file type '.{}' — expected one of: {}",
+            "unsupported file type '.{}'; expected one of: {}",
             ext,
             IMAGE_EXTENSIONS.join(", ")
         );
@@ -414,7 +414,7 @@ mod tests {
     #[test]
     fn emit_changed_is_silent_without_breadd() {
         // BreadClient::emit must never panic or error just because the
-        // socket is missing — this is the fail-silent contract.
+        // socket is missing; this is the fail-silent contract.
         emit_changed(Path::new("/tmp/wallpaper.png"), None);
         emit_changed(Path::new("/tmp/wallpaper.png"), Some("eDP-1"));
     }
@@ -457,7 +457,7 @@ mod tests {
 
     #[test]
     fn handle_set_with_output_vs_without_is_silent_without_breadd() {
-        // Missing files fail in validate — never reaches awww/wal.
+        // Missing files fail in validate; never reaches awww/wal.
         handle_set(&json!({ "path": "/no/such/breadpaper-wallpaper.png" }));
         handle_set(&json!({
             "path": "/no/such/breadpaper-wallpaper.png",

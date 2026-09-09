@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::IMAGE_EXTENSIONS;
 
 /// Caps how many files the picker ever lists. The library is organized in
-/// subfolders (show/series), so the walk is recursive — without a bound a
+/// subfolders (show/series), so the walk is recursive; without a bound a
 /// huge Pictures tree would stall the window.
 pub const MAX_LIBRARY_ITEMS: usize = 200;
 pub const MAX_SCAN_DEPTH: usize = 4;
