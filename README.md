@@ -2,9 +2,10 @@
 
 Wallpaper setter for the bread desktop. One command sets the wallpaper
 via [awww](https://github.com/heywoodlh/awww), extracts a palette from it
-natively via `bread-theme`, and runs `bread-theme reload`. Two monitors
-can keep different wallpapers (and per-output bread-theme files); the
-last path per output is stored in `~/.config/breadpaper/current.json`.
+natively via `bread-theme`, and writes the shared stylesheet in-process.
+Two monitors can keep different wallpapers (and per-output bread-theme
+files); the last path per output is stored in
+`~/.config/breadpaper/current.json`.
 
 `set` / `get` / `apply` stay one-shot CLI. `breadpaper library` (alias
 `browse`) opens a GTK picker over the wallpaper directories. It is not
@@ -40,7 +41,7 @@ install -Dm755 target/release/breadpaper ~/.local/bin/breadpaper
 ```
 breadpaper <path>                 # shorthand for `set` (all outputs)
 breadpaper <path> --output NAME   # one output
-breadpaper set <path>             # awww + palette extraction + bread-theme reload (all)
+breadpaper set <path>             # awww + palette extraction + shared stylesheet write (all)
 breadpaper set <path> --output NAME
 breadpaper get                    # print the current wallpaper (see get() docstring)
 breadpaper get --output NAME      # path from current.json

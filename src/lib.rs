@@ -33,15 +33,28 @@ pub fn library(extra_dirs: impl IntoIterator<Item = PathBuf>) -> Result<()> {
 /// Set wallpaper + global palette on every live output.
 pub fn set(path: &Path) -> Result<()> {
     let path = validate(path)?;
-    apply_wallpaper(&path)?;
 
+    // Extract before applying the wallpaper: if decoding fails (an
+    // unsupported webp/gif/bmp payload, a corrupt file, ...) this returns
+    // early and leaves the old wallpaper and theme in place instead of
+    // applying a wallpaper the palette then fails to match.
+    //
     // Extract once and reuse the same palette for the global write and every
     // per-output file below, rather than extracting per output for an
     // identical result.
     let palette =
         bread_theme::palette_from_image(&path).context("bread-theme palette_from_image")?;
+
+    apply_wallpaper(&path)?;
+
     bread_theme::write_global_palette(&palette).context("bread-theme write_global_palette")?;
-    reload_theme()?;
+    // Regenerate the shared stylesheet in-process from the palette we just
+    // wrote, instead of shelling out to `bread-theme reload`. That external
+    // binary only re-renders the shared sheet from the global cache (see
+    // bread-theme's `reload` verb); writing it directly from `palette` here
+    // is equivalent, does not depend on `bread-theme` being installed, and
+    // cannot read a stale cache from an older installed CLI.
+    theme::write_shared_from(&palette)?;
 
     let mut cur = current::Current::load();
 
@@ -135,8 +148,13 @@ pub fn set_on(path: &Path, output: &str) -> Result<()> {
         bail!("output name is empty");
     }
     let path = validate(path)?;
-    wallpaper::apply_on(&path, output)?;
+
+    // Extract (and write the per-output files) before applying the
+    // wallpaper, for the same half-applied-state reason as `set()`: a decode
+    // failure must not leave a new wallpaper on screen with the old theme.
     let palette = theme::generate_for_output(output, &path)?;
+
+    wallpaper::apply_on(&path, output)?;
 
     let mut cur = current::Current::load();
     cur.set_output(output, path.clone());
@@ -332,11 +350,18 @@ fn spawn_library() -> Result<()> {
 /// then the `"*"` entry, then whichever persisted output comes first.
 pub fn get() -> Result<PathBuf> {
     let cur = current::Current::load();
+    let focused = bread_utils::hypr::focused_monitor().map(|m| m.name);
+    resolve_current(&cur, focused.as_deref())
+}
 
-    let focused = bread_utils::hypr::focused_monitor()
-        .and_then(|m| cur.get_output(&m.name).map(Path::to_path_buf));
-
+/// Precedence used by [`get`]: the focused output's entry, then the `"*"`
+/// entry, then whichever persisted output comes first. Split out so the
+/// ordering can be unit tested by passing `focused` directly instead of
+/// going through the live `bread_utils::hypr::focused_monitor()` lookup
+/// (which needs a running Hyprland socket).
+fn resolve_current(cur: &current::Current, focused: Option<&str>) -> Result<PathBuf> {
     focused
+        .and_then(|name| cur.get_output(name).map(Path::to_path_buf))
         .or_else(|| cur.get_output("*").map(Path::to_path_buf))
         .or_else(|| cur.all().values().next().cloned())
         .context("no wallpaper set yet")
@@ -352,10 +377,6 @@ pub fn get_on(output: &str) -> Result<PathBuf> {
 
 pub fn apply_wallpaper(path: &Path) -> Result<()> {
     wallpaper::apply(path)
-}
-
-pub fn reload_theme() -> Result<()> {
-    theme::reload()
 }
 
 fn validate(path: &Path) -> Result<PathBuf> {
@@ -466,7 +487,8 @@ mod tests {
 
     #[test]
     fn handle_set_with_output_vs_without_is_silent_without_breadd() {
-        // Missing files fail in validate; never reaches awww/wal.
+        // Missing files fail in validate; never reaches wallpaper
+        // application or palette extraction.
         handle_set(&json!({ "path": "/no/such/breadpaper-wallpaper.png" }));
         handle_set(&json!({
             "path": "/no/such/breadpaper-wallpaper.png",
@@ -514,6 +536,56 @@ mod tests {
         cur.set_output("mon-a", "/abs/a.png");
         cur.set_output("mon-b", "/abs/b.png");
         assert!(stale_outputs(&cur, &["mon-a".to_string(), "mon-b".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn resolve_current_prefers_the_focused_output() {
+        let mut cur = current::Current::default();
+        cur.set_output("*", "/abs/global.png");
+        cur.set_output("mon-a", "/abs/a.png");
+        cur.set_output("mon-b", "/abs/b.png");
+
+        assert_eq!(
+            resolve_current(&cur, Some("mon-b")).unwrap(),
+            PathBuf::from("/abs/b.png")
+        );
+    }
+
+    #[test]
+    fn resolve_current_falls_back_to_wildcard_when_focused_has_no_entry() {
+        let mut cur = current::Current::default();
+        cur.set_output("*", "/abs/global.png");
+        cur.set_output("mon-a", "/abs/a.png");
+
+        // "mon-z" is not persisted (e.g. not resolvable, or a fresh output).
+        assert_eq!(
+            resolve_current(&cur, Some("mon-z")).unwrap(),
+            PathBuf::from("/abs/global.png")
+        );
+        assert_eq!(
+            resolve_current(&cur, None).unwrap(),
+            PathBuf::from("/abs/global.png")
+        );
+    }
+
+    #[test]
+    fn resolve_current_falls_back_to_first_entry_when_no_focused_and_no_wildcard() {
+        let mut cur = current::Current::default();
+        cur.set_output("mon-a", "/abs/a.png");
+        cur.set_output("mon-b", "/abs/b.png");
+
+        // No "*" entry and no matching focused output: first entry by key
+        // ("mon-a" sorts before "mon-b" in the underlying BTreeMap).
+        assert_eq!(
+            resolve_current(&cur, None).unwrap(),
+            PathBuf::from("/abs/a.png")
+        );
+    }
+
+    #[test]
+    fn resolve_current_errors_when_nothing_is_persisted() {
+        let cur = current::Current::default();
+        assert!(resolve_current(&cur, None).is_err());
     }
 
     #[test]
