@@ -50,7 +50,7 @@ that is the documented bread convention, not a breadpaper bug.
 
 | Verb | Data | Effect |
 |------|------|--------|
-| `set` | `{ "path": "...", "output"?: "..." }` | Missing `output` calls `set()` (all live outputs, global `wal -i`, `bread-theme reload`). A string `output` calls `set_on()` (that monitor only; no global wal unless it is the focused Hyprland monitor). Emits `bread.paper.set.done` / `.failed`. A successful set also emits `bread.paper.changed`. |
+| `set` | `{ "path": "...", "output"?: "..." }` | Missing `output` calls `set()` (all live outputs, global palette extraction, `bread-theme reload`). A string `output` calls `set_on()` (that monitor only; no global palette write unless it is the focused Hyprland monitor). Emits `bread.paper.set.done` / `.failed`. A successful set also emits `bread.paper.changed`. |
 | `library` | `{}` | Spawns `breadpaper library` (GTK picker). Emits `bread.paper.library.done` once the process is started, or `bread.paper.library.failed` if the spawn fails. Clicking a thumbnail in that window applies to the picker's output and publishes `bread.paper.changed`. |
 
 ### Not implemented: slideshow / random / next
@@ -63,7 +63,7 @@ ahead of a real slideshow feature. Unrecognized verbs are ignored.
 
 - If breadd isn't installed or isn't running, `emit` is a silent no-op
   (`BreadClient::emit` never blocks or errors the caller); breadpaper
-  still sets the wallpaper, generates the palette, and reloads themes.
+  still sets the wallpaper, extracts the palette, and reloads themes.
 - `breadpaper listen` does not exit if breadd is down. The command
   subscription reconnects automatically (`BreadClient::subscribe`'s
   background thread has its own backoff loop); no restart of `listen`

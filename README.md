@@ -1,11 +1,10 @@
 # breadpaper
 
 Wallpaper setter for the bread desktop. One command sets the wallpaper
-via [awww](https://github.com/heywoodlh/awww), generates a palette with
-[pywal](https://github.com/dylanaraps/pywal) (`wal`), and runs
-`bread-theme reload`. Two monitors can keep different wallpapers (and
-per-output bread-theme files); the last path per output is stored in
-`~/.config/breadpaper/current.json`.
+via [awww](https://github.com/heywoodlh/awww), extracts a palette from it
+natively via `bread-theme`, and runs `bread-theme reload`. Two monitors
+can keep different wallpapers (and per-output bread-theme files); the
+last path per output is stored in `~/.config/breadpaper/current.json`.
 
 `set` / `get` / `apply` stay one-shot CLI. `breadpaper library` (alias
 `browse`) opens a GTK picker over the wallpaper directories. It is not
@@ -16,13 +15,12 @@ a slideshow daemon.
 Must be on `$PATH` for `set`:
 
 - `awww`: Wayland wallpaper (`awww img`)
-- `wal`: palette generation (`python-pywal`)
-- `bread-theme`: theme reload (bakery package, not `breadd`)
+- `bread-theme`: palette extraction + theme reload (bakery package, not `breadd`)
 
 `library` also needs GTK4 (the window loads `bread-theme`'s shared
-stylesheet and follows the monitor it sits on). `get` without
-`--output` still reads the path pywal stored at `~/.cache/wal/wal`.
-`get --output NAME` reads `~/.config/breadpaper/current.json`.
+stylesheet and follows the monitor it sits on). `get` (with or without
+`--output`) reads `~/.config/breadpaper/current.json`; see the docstring
+on `get()` for which entry it picks with no `--output`.
 
 ## Install
 
@@ -42,9 +40,9 @@ install -Dm755 target/release/breadpaper ~/.local/bin/breadpaper
 ```
 breadpaper <path>                 # shorthand for `set` (all outputs)
 breadpaper <path> --output NAME   # one output
-breadpaper set <path>             # awww + wal + bread-theme reload (all)
+breadpaper set <path>             # awww + palette extraction + bread-theme reload (all)
 breadpaper set <path> --output NAME
-breadpaper get                    # print ~/.cache/wal/wal
+breadpaper get                    # print the current wallpaper (see get() docstring)
 breadpaper get --output NAME      # path from current.json
 breadpaper apply                  # restore current.json
 breadpaper library                # GTK picker (alias: browse)

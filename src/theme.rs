@@ -16,7 +16,7 @@ pub fn reload() -> Result<()> {
     Ok(())
 }
 
-/// Per-output palette + bread-theme files. Does not run `wal -i`.
+/// Per-output palette + bread-theme files. Does not touch the global palette.
 pub fn generate_for_output(output: &str, path: &Path) -> Result<Palette> {
     bread_theme::generate_output(output, path)
         .with_context(|| format!("bread-theme generate_output({output}, {})", path.display()))?;

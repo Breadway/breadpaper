@@ -23,7 +23,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Set wallpaper, generate pywal palette, and reload bread themes
+    /// Set wallpaper, extract a palette, and reload bread themes
     Set { path: PathBuf },
     /// Print the current wallpaper path
     Get,

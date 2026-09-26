@@ -1,7 +1,7 @@
 name = "breadpaper"
-description = "Wallpaper manager for the bread desktop: sets awww wallpaper, generates pywal palette, reloads bread themes"
+description = "Wallpaper manager for the bread desktop: sets awww wallpaper, extracts a palette, reloads bread themes"
 binaries = ["breadpaper"]
-system_deps = ["awww", "python-pywal", "gtk4"]
+system_deps = ["awww", "gtk4"]
 optional_system_deps = []
 bread_deps = ["bread-theme"]
 license_file = "LICENSE"

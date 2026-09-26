@@ -1,7 +1,6 @@
 mod config;
 mod current;
 mod library;
-mod pywal;
 mod theme;
 mod ui;
 mod wallpaper;
@@ -31,17 +30,18 @@ pub fn library(extra_dirs: impl IntoIterator<Item = PathBuf>) -> Result<()> {
     ui::run(cfg.library_dirs)
 }
 
-/// Set wallpaper + global pywal palette on every live output.
+/// Set wallpaper + global palette on every live output.
 pub fn set(path: &Path) -> Result<()> {
     let path = validate(path)?;
     apply_wallpaper(&path)?;
-    generate_palette(&path)?;
-    reload_theme()?;
 
-    // A global set applies one palette to every output: the one `wal -i`
-    // just wrote to `~/.cache/wal`. Reuse it rather than re-running an
-    // isolated `wal -i` once per output for an identical result.
-    let palette = bread_theme::load_palette();
+    // Extract once and reuse the same palette for the global write and every
+    // per-output file below, rather than extracting per output for an
+    // identical result.
+    let palette =
+        bread_theme::palette_from_image(&path).context("bread-theme palette_from_image")?;
+    bread_theme::write_global_palette(&palette).context("bread-theme write_global_palette")?;
+    reload_theme()?;
 
     let mut cur = current::Current::load();
 
@@ -86,7 +86,7 @@ pub fn set(path: &Path) -> Result<()> {
 }
 
 /// Write `palettes/<output>.json` + `themes/<output>.css` for a palette that
-/// is already known (no isolated `wal -i` re-run).
+/// is already known (no isolated re-extraction).
 fn write_output_theme(output: &str, palette: &bread_theme::Palette) -> Result<()> {
     bread_theme::write_output_palette(output, palette)
         .with_context(|| format!("write per-output palette for {output}"))?;
@@ -127,9 +127,9 @@ fn prune_disconnected_outputs(cur: &mut current::Current, connected: &[String]) 
 ///
 /// For a non-focused output this only writes that output's per-monitor
 /// files. If `output` is the focused Hyprland monitor it additionally
-/// syncs the session-global state (shared stylesheet + `~/.cache/wal`) from
-/// that output's palette, so unbound apps and app-specific chrome match the
-/// focused screen.
+/// syncs the session-global state (shared stylesheet + bread-theme's global
+/// palette cache) from that output's palette, so unbound apps and
+/// app-specific chrome match the focused screen.
 pub fn set_on(path: &Path, output: &str) -> Result<()> {
     if output.is_empty() {
         bail!("output name is empty");
@@ -143,7 +143,7 @@ pub fn set_on(path: &Path, output: &str) -> Result<()> {
     cur.save()?;
 
     if is_focused_output(output) {
-        sync_focused_global(&path, &palette)?;
+        sync_focused_global(&palette)?;
     }
 
     emit_changed(&path, Some(output));
@@ -151,14 +151,17 @@ pub fn set_on(path: &Path, output: &str) -> Result<()> {
 }
 
 /// The focused monitor defines the session-global look, so sync BOTH the
-/// shared stylesheet AND pywal's global cache (`~/.cache/wal/colors.json`) to
-/// this output's palette. Every app rebuilds its own CSS from `load_palette()`
-/// (which reads that cache) when `theme.css` changes; without the cache sync
-/// its app-specific chrome keeps the previous palette while shared-sheet
-/// widgets move to the new one, a mixed palette. `set()` (global) already
-/// keeps the two in lockstep; this makes a focused `set_on` consistent.
-fn sync_focused_global(path: &Path, palette: &bread_theme::Palette) -> Result<()> {
-    generate_palette(path)?;
+/// shared stylesheet AND bread-theme's global palette cache to this output's
+/// palette. Every app rebuilds its own CSS from `load_palette()` (which reads
+/// that cache) when `theme.css` changes; without the cache sync its
+/// app-specific chrome keeps the previous palette while shared-sheet widgets
+/// move to the new one, a mixed palette. `set()` (global) already keeps the
+/// two in lockstep; this makes a focused `set_on` consistent.
+///
+/// Takes the palette this output's `generate_for_output` already extracted;
+/// no re-extraction from the wallpaper file here.
+fn sync_focused_global(palette: &bread_theme::Palette) -> Result<()> {
+    bread_theme::write_global_palette(palette).context("bread-theme write_global_palette")?;
     theme::write_shared_from(palette)?;
     Ok(())
 }
@@ -196,7 +199,7 @@ fn restore_one(output: &str, path: &Path) -> Result<()> {
     wallpaper::apply_on(path, output)?;
     let palette = theme::generate_for_output(output, path)?;
     if is_focused_output(output) {
-        sync_focused_global(path, &palette)?;
+        sync_focused_global(&palette)?;
     }
     Ok(())
 }
@@ -319,14 +322,24 @@ fn spawn_library() -> Result<()> {
     Ok(())
 }
 
+/// Wallpaper path for "the" current wallpaper when no `--output` is given.
+///
+/// `set()` (global) only writes a `"*"` entry in `current.json` when no
+/// compositor output could be resolved at all; ordinarily it writes one
+/// entry per connected output instead, so there is no single obviously
+/// canonical entry to read. Pick, in order: the focused Hyprland monitor's
+/// entry (it defines the session-global look, see `sync_focused_global`),
+/// then the `"*"` entry, then whichever persisted output comes first.
 pub fn get() -> Result<PathBuf> {
-    let home = std::env::var("HOME").context("HOME not set")?;
-    let wal_file = PathBuf::from(home).join(".cache/wal/wal");
+    let cur = current::Current::load();
 
-    let contents = std::fs::read_to_string(&wal_file)
-        .with_context(|| format!("no wallpaper set yet ({})", wal_file.display()))?;
+    let focused = bread_utils::hypr::focused_monitor()
+        .and_then(|m| cur.get_output(&m.name).map(Path::to_path_buf));
 
-    Ok(PathBuf::from(contents.trim()))
+    focused
+        .or_else(|| cur.get_output("*").map(Path::to_path_buf))
+        .or_else(|| cur.all().values().next().cloned())
+        .context("no wallpaper set yet")
 }
 
 /// Wallpaper path last persisted for `output` in current.json.
@@ -339,10 +352,6 @@ pub fn get_on(output: &str) -> Result<PathBuf> {
 
 pub fn apply_wallpaper(path: &Path) -> Result<()> {
     wallpaper::apply(path)
-}
-
-pub fn generate_palette(path: &Path) -> Result<()> {
-    pywal::generate(path)
 }
 
 pub fn reload_theme() -> Result<()> {
