@@ -16,7 +16,11 @@ a slideshow daemon.
 Must be on `$PATH` for `set`:
 
 - `awww`: Wayland wallpaper (`awww img`)
-- `bread-theme`: palette extraction + theme reload (bakery package, not `breadd`)
+
+Palette extraction and the shared stylesheet write are done in-process via
+the `bread-theme` library crate (with its `extract` feature): the
+`bread-theme` CLI binary does not need to be installed or on `$PATH` for
+`set` to work.
 
 `library` also needs GTK4 (the window loads `bread-theme`'s shared
 stylesheet and follows the monitor it sits on). `get` (with or without
@@ -85,4 +89,9 @@ can still `bread.exec("breadpaper set …")` or
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE), plus third-party terms: breadpaper always
+builds bread-theme with its `extract` feature (palette extraction is
+breadpaper's whole purpose), which statically links a Rust port of
+ImageMagick and libjpeg-turbo/IJG code (`bread-palette-extract`). See
+[NOTICE](NOTICE), [LICENSE-ImageMagick](LICENSE-ImageMagick) and
+[LICENSE-libjpeg-turbo](LICENSE-libjpeg-turbo), or run `breadpaper notice`.

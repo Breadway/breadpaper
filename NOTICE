@@ -1,0 +1,73 @@
+breadpaper
+Copyright (c) 2026 Breadway. Licensed under the MIT License (LICENSE).
+
+breadpaper always builds bread-theme with its `extract` feature enabled
+(palette extraction from an image is breadpaper's whole purpose), which
+statically links bread-palette-extract: a Rust port of code from
+ImageMagick and libjpeg-turbo/IJG. That ported code keeps their own licence
+terms, reproduced in full in LICENSE-ImageMagick and LICENSE-libjpeg-turbo
+(also printed by `breadpaper notice`), and copied here from
+bread-palette-extract's own NOTICE/LICENSE-* files (Breadway/bread-ecosystem)
+so this binary carries its own copy.
+
+ImageMagick
+-----------
+Ported: MagickCore/geometry.c (ParseMetaGeometry), resize.c (ResizeImage,
+AcquireResizeFilter, SincFast, CubicBC, HorizontalFilter, VerticalFilter),
+quantize.c (QuantizeImage, ClassifyImageColors, ReduceImageColors, Reduce,
+PruneChild, PruneLevel, PruneToCubeDepth, DefineImageColormap, ClosestColor,
+Riemersma/RiemersmaDither, SetGrayscaleImage's gray transform),
+histogram.c (UniqueImageColors), color.c (GetColorTuple), and the Q16 HDRI
+quantum helpers in quantum.h/pixel-accessor.h, translated from C to Rust.
+
+  Copyright @ 1999 ImageMagick Studio LLC, a non-profit organization
+  dedicated to making software imaging solutions freely available.
+  Licensed under the ImageMagick License (LICENSE-ImageMagick; also
+  https://imagemagick.org/license/).
+
+The ImageMagick License requires any NOTICE text pertaining to the
+redistributed work to travel with it (Section 4). Of ImageMagick's own
+upstream NOTICE file, only this entry pertains to the code ported above:
+
+  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+  1. ImageMagick copyright:
+
+  Copyright @ 1999 ImageMagick Studio LLC, a non-profit organization dedicated
+  to making software imaging solutions freely available.
+
+  You may not use this file except in compliance with the License. You may
+  obtain a copy of the License at
+
+    https://imagemagick.org/license/
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+  License for the specific language governing permissions and limitations
+  under the License.
+
+  The full text of this license is available in the LICENSE file.
+
+  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+libjpeg-turbo / Independent JPEG Group
+--------------------------------------
+Ported: jidctint.c (jpeg_idct_islow), jdsample.c (fancy upsampling),
+jdcolor.c (ycc_rgb_convert), jdmaster.c (range-limit table), jdmainct.c
+(context-row edge handling), jdapimin.c (colour space defaults), and the
+Huffman decoding rules of jdhuff.c/jdphuff.c, translated from C to Rust.
+This is libjpeg-turbo's core libjpeg API library (decode path and
+inherited/modified libjpeg code), covered solely by the IJG License; the
+separate Modified (3-clause) BSD License covers the TurboJPEG API library,
+cjpeg/djpeg, libspng and the build/test system, none of which is used here.
+
+  This software is based in part on the work of the Independent JPEG Group.
+  Copyright (C) 1991-1998, Thomas G. Lane.
+  Copyright (C) 1999, Ken Murchison.
+  Copyright (C) 2009-2026, D. R. Commander.
+  Copyright 2009 Pierre Ossman for Cendio AB.
+  Copyright (C) 2010-2026 other libjpeg-turbo contributors (Linaro
+  Limited, Google, Inc., Matthias Raencker, Arm Limited), as listed in the
+  ported source files.
+  Licensed under the IJG License (LICENSE-libjpeg-turbo).

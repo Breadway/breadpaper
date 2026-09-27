@@ -149,12 +149,19 @@ pub fn set_on(path: &Path, output: &str) -> Result<()> {
     }
     let path = validate(path)?;
 
-    // Extract (and write the per-output files) before applying the
-    // wallpaper, for the same half-applied-state reason as `set()`: a decode
-    // failure must not leave a new wallpaper on screen with the old theme.
-    let palette = theme::generate_for_output(output, &path)?;
+    // Extract before applying the wallpaper, for the same half-applied-state
+    // reason as `set()`: a decode failure must not leave a new wallpaper on
+    // screen with the old theme. Unlike the old `generate_for_output` call
+    // this used to make here, extraction alone has no side effects: the
+    // per-output palette/css files are only written below, after the
+    // wallpaper is confirmed applied, so an `awww` failure leaves the
+    // monitor's on-disk theme matching what's actually on screen.
+    let palette =
+        bread_theme::palette_from_image(&path).context("bread-theme palette_from_image")?;
 
     wallpaper::apply_on(&path, output)?;
+
+    write_output_theme(output, &palette)?;
 
     let mut cur = current::Current::load();
     cur.set_output(output, path.clone());
@@ -176,8 +183,10 @@ pub fn set_on(path: &Path, output: &str) -> Result<()> {
 /// move to the new one, a mixed palette. `set()` (global) already keeps the
 /// two in lockstep; this makes a focused `set_on` consistent.
 ///
-/// Takes the palette this output's `generate_for_output` already extracted;
-/// no re-extraction from the wallpaper file here.
+/// Takes the palette the caller already extracted (`set_on` via
+/// `bread_theme::palette_from_image`, `restore_one` via
+/// `theme::generate_for_output`); no re-extraction from the wallpaper file
+/// here.
 fn sync_focused_global(palette: &bread_theme::Palette) -> Result<()> {
     bread_theme::write_global_palette(palette).context("bread-theme write_global_palette")?;
     theme::write_shared_from(palette)?;

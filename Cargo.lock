@@ -77,6 +77,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
+name = "bread-palette-extract"
+version = "0.7.12"
+source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=feature%2Fnative-palette#c29a829b807b20d54dea5d9ba3d4fd090b843801"
+dependencies = [
+ "image",
+]
+
+[[package]]
 name = "bread-shared"
 version = "0.7.0"
 source = "git+https://git.breadway.dev/Breadway/bread?tag=v0.7.0#22e34e2cf2202305d7960759dfccb54dc79f948b"
@@ -90,12 +98,12 @@ dependencies = [
 [[package]]
 name = "bread-theme"
 version = "0.7.12"
-source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=feature%2Fnative-palette#3758f0c3b43dd1a18dc63d82c2d6db1820b1ef4f"
+source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=feature%2Fnative-palette#c29a829b807b20d54dea5d9ba3d4fd090b843801"
 dependencies = [
  "anyhow",
+ "bread-palette-extract",
  "dirs",
  "gtk4",
- "image",
  "serde",
  "serde_json",
  "toml 0.8.23",

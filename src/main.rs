@@ -38,6 +38,9 @@ enum Command {
         #[arg(short, long = "dir", value_name = "DIR")]
         dirs: Vec<PathBuf>,
     },
+    /// Print third-party notices (ImageMagick, libjpeg-turbo/IJG code
+    /// bundled via bread-theme's `extract` feature)
+    Notice,
 }
 
 fn main() {
@@ -51,6 +54,15 @@ fn main() {
         (Some(Command::Listen), _) => breadpaper::listen(),
         (Some(Command::Library { dirs }), _) => breadpaper::library(dirs),
         (Some(Command::Apply), _) => breadpaper::apply_saved(),
+        (Some(Command::Notice), _) => {
+            print!(
+                "{}\n\n{}\n\n{}",
+                include_str!("../NOTICE"),
+                include_str!("../LICENSE-ImageMagick"),
+                include_str!("../LICENSE-libjpeg-turbo")
+            );
+            Ok(())
+        }
         (Some(Command::Get), _) | (None, None) => match cli.output.as_deref() {
             Some(output) => breadpaper::get_on(output).map(|p| println!("{}", p.display())),
             None => breadpaper::get().map(|p| println!("{}", p.display())),
