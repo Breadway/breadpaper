@@ -79,7 +79,7 @@ checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 [[package]]
 name = "bread-palette-extract"
 version = "0.7.12"
-source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=feature%2Fnative-palette#c29a829b807b20d54dea5d9ba3d4fd090b843801"
+source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=feature%2Fnative-palette#4c51998e0cab971bba93c4d8d89b80bb63198b25"
 dependencies = [
  "image",
 ]
@@ -98,7 +98,7 @@ dependencies = [
 [[package]]
 name = "bread-theme"
 version = "0.7.12"
-source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=feature%2Fnative-palette#c29a829b807b20d54dea5d9ba3d4fd090b843801"
+source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=feature%2Fnative-palette#4c51998e0cab971bba93c4d8d89b80bb63198b25"
 dependencies = [
  "anyhow",
  "bread-palette-extract",
