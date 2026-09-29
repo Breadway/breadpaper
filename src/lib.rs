@@ -1,7 +1,6 @@
 mod config;
 mod current;
 mod library;
-mod pywal;
 mod theme;
 mod ui;
 mod wallpaper;
@@ -31,17 +30,31 @@ pub fn library(extra_dirs: impl IntoIterator<Item = PathBuf>) -> Result<()> {
     ui::run(cfg.library_dirs)
 }
 
-/// Set wallpaper + global pywal palette on every live output.
+/// Set wallpaper + global palette on every live output.
 pub fn set(path: &Path) -> Result<()> {
     let path = validate(path)?;
-    apply_wallpaper(&path)?;
-    generate_palette(&path)?;
-    reload_theme()?;
 
-    // A global set applies one palette to every output: the one `wal -i`
-    // just wrote to `~/.cache/wal`. Reuse it rather than re-running an
-    // isolated `wal -i` once per output for an identical result.
-    let palette = bread_theme::load_palette();
+    // Extract before applying the wallpaper: if decoding fails (an
+    // unsupported webp/gif/bmp payload, a corrupt file, ...) this returns
+    // early and leaves the old wallpaper and theme in place instead of
+    // applying a wallpaper the palette then fails to match.
+    //
+    // Extract once and reuse the same palette for the global write and every
+    // per-output file below, rather than extracting per output for an
+    // identical result.
+    let palette =
+        bread_theme::palette_from_image(&path).context("bread-theme palette_from_image")?;
+
+    apply_wallpaper(&path)?;
+
+    bread_theme::write_global_palette(&palette).context("bread-theme write_global_palette")?;
+    // Regenerate the shared stylesheet in-process from the palette we just
+    // wrote, instead of shelling out to `bread-theme reload`. That external
+    // binary only re-renders the shared sheet from the global cache (see
+    // bread-theme's `reload` verb); writing it directly from `palette` here
+    // is equivalent, does not depend on `bread-theme` being installed, and
+    // cannot read a stale cache from an older installed CLI.
+    theme::write_shared_from(&palette)?;
 
     let mut cur = current::Current::load();
 
@@ -86,7 +99,7 @@ pub fn set(path: &Path) -> Result<()> {
 }
 
 /// Write `palettes/<output>.json` + `themes/<output>.css` for a palette that
-/// is already known (no isolated `wal -i` re-run).
+/// is already known (no isolated re-extraction).
 fn write_output_theme(output: &str, palette: &bread_theme::Palette) -> Result<()> {
     bread_theme::write_output_palette(output, palette)
         .with_context(|| format!("write per-output palette for {output}"))?;
@@ -127,23 +140,35 @@ fn prune_disconnected_outputs(cur: &mut current::Current, connected: &[String]) 
 ///
 /// For a non-focused output this only writes that output's per-monitor
 /// files. If `output` is the focused Hyprland monitor it additionally
-/// syncs the session-global state (shared stylesheet + `~/.cache/wal`) from
-/// that output's palette, so unbound apps and app-specific chrome match the
-/// focused screen.
+/// syncs the session-global state (shared stylesheet + bread-theme's global
+/// palette cache) from that output's palette, so unbound apps and
+/// app-specific chrome match the focused screen.
 pub fn set_on(path: &Path, output: &str) -> Result<()> {
     if output.is_empty() {
         bail!("output name is empty");
     }
     let path = validate(path)?;
+
+    // Extract before applying the wallpaper, for the same half-applied-state
+    // reason as `set()`: a decode failure must not leave a new wallpaper on
+    // screen with the old theme. Unlike the old `generate_for_output` call
+    // this used to make here, extraction alone has no side effects: the
+    // per-output palette/css files are only written below, after the
+    // wallpaper is confirmed applied, so an `awww` failure leaves the
+    // monitor's on-disk theme matching what's actually on screen.
+    let palette =
+        bread_theme::palette_from_image(&path).context("bread-theme palette_from_image")?;
+
     wallpaper::apply_on(&path, output)?;
-    let palette = theme::generate_for_output(output, &path)?;
+
+    write_output_theme(output, &palette)?;
 
     let mut cur = current::Current::load();
     cur.set_output(output, path.clone());
     cur.save()?;
 
     if is_focused_output(output) {
-        sync_focused_global(&path, &palette)?;
+        sync_focused_global(&palette)?;
     }
 
     emit_changed(&path, Some(output));
@@ -151,14 +176,19 @@ pub fn set_on(path: &Path, output: &str) -> Result<()> {
 }
 
 /// The focused monitor defines the session-global look, so sync BOTH the
-/// shared stylesheet AND pywal's global cache (`~/.cache/wal/colors.json`) to
-/// this output's palette. Every app rebuilds its own CSS from `load_palette()`
-/// (which reads that cache) when `theme.css` changes; without the cache sync
-/// its app-specific chrome keeps the previous palette while shared-sheet
-/// widgets move to the new one, a mixed palette. `set()` (global) already
-/// keeps the two in lockstep; this makes a focused `set_on` consistent.
-fn sync_focused_global(path: &Path, palette: &bread_theme::Palette) -> Result<()> {
-    generate_palette(path)?;
+/// shared stylesheet AND bread-theme's global palette cache to this output's
+/// palette. Every app rebuilds its own CSS from `load_palette()` (which reads
+/// that cache) when `theme.css` changes; without the cache sync its
+/// app-specific chrome keeps the previous palette while shared-sheet widgets
+/// move to the new one, a mixed palette. `set()` (global) already keeps the
+/// two in lockstep; this makes a focused `set_on` consistent.
+///
+/// Takes the palette the caller already extracted (`set_on` via
+/// `bread_theme::palette_from_image`, `restore_one` via
+/// `theme::generate_for_output`); no re-extraction from the wallpaper file
+/// here.
+fn sync_focused_global(palette: &bread_theme::Palette) -> Result<()> {
+    bread_theme::write_global_palette(palette).context("bread-theme write_global_palette")?;
     theme::write_shared_from(palette)?;
     Ok(())
 }
@@ -196,7 +226,7 @@ fn restore_one(output: &str, path: &Path) -> Result<()> {
     wallpaper::apply_on(path, output)?;
     let palette = theme::generate_for_output(output, path)?;
     if is_focused_output(output) {
-        sync_focused_global(path, &palette)?;
+        sync_focused_global(&palette)?;
     }
     Ok(())
 }
@@ -319,14 +349,31 @@ fn spawn_library() -> Result<()> {
     Ok(())
 }
 
+/// Wallpaper path for "the" current wallpaper when no `--output` is given.
+///
+/// `set()` (global) only writes a `"*"` entry in `current.json` when no
+/// compositor output could be resolved at all; ordinarily it writes one
+/// entry per connected output instead, so there is no single obviously
+/// canonical entry to read. Pick, in order: the focused Hyprland monitor's
+/// entry (it defines the session-global look, see `sync_focused_global`),
+/// then the `"*"` entry, then whichever persisted output comes first.
 pub fn get() -> Result<PathBuf> {
-    let home = std::env::var("HOME").context("HOME not set")?;
-    let wal_file = PathBuf::from(home).join(".cache/wal/wal");
+    let cur = current::Current::load();
+    let focused = bread_utils::hypr::focused_monitor().map(|m| m.name);
+    resolve_current(&cur, focused.as_deref())
+}
 
-    let contents = std::fs::read_to_string(&wal_file)
-        .with_context(|| format!("no wallpaper set yet ({})", wal_file.display()))?;
-
-    Ok(PathBuf::from(contents.trim()))
+/// Precedence used by [`get`]: the focused output's entry, then the `"*"`
+/// entry, then whichever persisted output comes first. Split out so the
+/// ordering can be unit tested by passing `focused` directly instead of
+/// going through the live `bread_utils::hypr::focused_monitor()` lookup
+/// (which needs a running Hyprland socket).
+fn resolve_current(cur: &current::Current, focused: Option<&str>) -> Result<PathBuf> {
+    focused
+        .and_then(|name| cur.get_output(name).map(Path::to_path_buf))
+        .or_else(|| cur.get_output("*").map(Path::to_path_buf))
+        .or_else(|| cur.all().values().next().cloned())
+        .context("no wallpaper set yet")
 }
 
 /// Wallpaper path last persisted for `output` in current.json.
@@ -339,14 +386,6 @@ pub fn get_on(output: &str) -> Result<PathBuf> {
 
 pub fn apply_wallpaper(path: &Path) -> Result<()> {
     wallpaper::apply(path)
-}
-
-pub fn generate_palette(path: &Path) -> Result<()> {
-    pywal::generate(path)
-}
-
-pub fn reload_theme() -> Result<()> {
-    theme::reload()
 }
 
 fn validate(path: &Path) -> Result<PathBuf> {
@@ -457,7 +496,8 @@ mod tests {
 
     #[test]
     fn handle_set_with_output_vs_without_is_silent_without_breadd() {
-        // Missing files fail in validate; never reaches awww/wal.
+        // Missing files fail in validate; never reaches wallpaper
+        // application or palette extraction.
         handle_set(&json!({ "path": "/no/such/breadpaper-wallpaper.png" }));
         handle_set(&json!({
             "path": "/no/such/breadpaper-wallpaper.png",
@@ -505,6 +545,56 @@ mod tests {
         cur.set_output("mon-a", "/abs/a.png");
         cur.set_output("mon-b", "/abs/b.png");
         assert!(stale_outputs(&cur, &["mon-a".to_string(), "mon-b".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn resolve_current_prefers_the_focused_output() {
+        let mut cur = current::Current::default();
+        cur.set_output("*", "/abs/global.png");
+        cur.set_output("mon-a", "/abs/a.png");
+        cur.set_output("mon-b", "/abs/b.png");
+
+        assert_eq!(
+            resolve_current(&cur, Some("mon-b")).unwrap(),
+            PathBuf::from("/abs/b.png")
+        );
+    }
+
+    #[test]
+    fn resolve_current_falls_back_to_wildcard_when_focused_has_no_entry() {
+        let mut cur = current::Current::default();
+        cur.set_output("*", "/abs/global.png");
+        cur.set_output("mon-a", "/abs/a.png");
+
+        // "mon-z" is not persisted (e.g. not resolvable, or a fresh output).
+        assert_eq!(
+            resolve_current(&cur, Some("mon-z")).unwrap(),
+            PathBuf::from("/abs/global.png")
+        );
+        assert_eq!(
+            resolve_current(&cur, None).unwrap(),
+            PathBuf::from("/abs/global.png")
+        );
+    }
+
+    #[test]
+    fn resolve_current_falls_back_to_first_entry_when_no_focused_and_no_wildcard() {
+        let mut cur = current::Current::default();
+        cur.set_output("mon-a", "/abs/a.png");
+        cur.set_output("mon-b", "/abs/b.png");
+
+        // No "*" entry and no matching focused output: first entry by key
+        // ("mon-a" sorts before "mon-b" in the underlying BTreeMap).
+        assert_eq!(
+            resolve_current(&cur, None).unwrap(),
+            PathBuf::from("/abs/a.png")
+        );
+    }
+
+    #[test]
+    fn resolve_current_errors_when_nothing_is_persisted() {
+        let cur = current::Current::default();
+        assert!(resolve_current(&cur, None).is_err());
     }
 
     #[test]

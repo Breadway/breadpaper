@@ -1,10 +1,10 @@
 # breadpaper
 
 Wallpaper setter for the bread desktop. One command sets the wallpaper
-via [awww](https://github.com/heywoodlh/awww), generates a palette with
-[pywal](https://github.com/dylanaraps/pywal) (`wal`), and runs
-`bread-theme reload`. Two monitors can keep different wallpapers (and
-per-output bread-theme files); the last path per output is stored in
+via [awww](https://github.com/heywoodlh/awww), extracts a palette from it
+natively via `bread-theme`, and writes the shared stylesheet in-process.
+Two monitors can keep different wallpapers (and per-output bread-theme
+files); the last path per output is stored in
 `~/.config/breadpaper/current.json`.
 
 `set` / `get` / `apply` stay one-shot CLI. `breadpaper library` (alias
@@ -16,13 +16,16 @@ a slideshow daemon.
 Must be on `$PATH` for `set`:
 
 - `awww`: Wayland wallpaper (`awww img`)
-- `wal`: palette generation (`python-pywal`)
-- `bread-theme`: theme reload (bakery package, not `breadd`)
+
+Palette extraction and the shared stylesheet write are done in-process via
+the `bread-theme` library crate (with its `extract` feature): the
+`bread-theme` CLI binary does not need to be installed or on `$PATH` for
+`set` to work.
 
 `library` also needs GTK4 (the window loads `bread-theme`'s shared
-stylesheet and follows the monitor it sits on). `get` without
-`--output` still reads the path pywal stored at `~/.cache/wal/wal`.
-`get --output NAME` reads `~/.config/breadpaper/current.json`.
+stylesheet and follows the monitor it sits on). `get` (with or without
+`--output`) reads `~/.config/breadpaper/current.json`; see the docstring
+on `get()` for which entry it picks with no `--output`.
 
 ## Install
 
@@ -42,9 +45,9 @@ install -Dm755 target/release/breadpaper ~/.local/bin/breadpaper
 ```
 breadpaper <path>                 # shorthand for `set` (all outputs)
 breadpaper <path> --output NAME   # one output
-breadpaper set <path>             # awww + wal + bread-theme reload (all)
+breadpaper set <path>             # awww + palette extraction + shared stylesheet write (all)
 breadpaper set <path> --output NAME
-breadpaper get                    # print ~/.cache/wal/wal
+breadpaper get                    # print the current wallpaper (see get() docstring)
 breadpaper get --output NAME      # path from current.json
 breadpaper apply                  # restore current.json
 breadpaper library                # GTK picker (alias: browse)
@@ -86,4 +89,9 @@ can still `bread.exec("breadpaper set …")` or
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE), plus third-party terms: breadpaper always
+builds bread-theme with its `extract` feature (palette extraction is
+breadpaper's whole purpose), which statically links a Rust port of
+ImageMagick and libjpeg-turbo/IJG code (`bread-palette-extract`). See
+[NOTICE](NOTICE), [LICENSE-ImageMagick](LICENSE-ImageMagick) and
+[LICENSE-libjpeg-turbo](LICENSE-libjpeg-turbo), or run `breadpaper notice`.
