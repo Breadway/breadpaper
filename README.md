@@ -61,14 +61,18 @@ Supported formats: `png`, `jpg`, `jpeg`, `webp`, `gif`, `bmp`.
 
 `breadpaper library` scans these directories (missing ones are skipped):
 
-1. `~/Pictures/Wallpapers`
+1. `~/Pictures/Backgrounds`
 2. `/usr/share/backgrounds/bos`
+
+`~/Pictures/Backgrounds` is the same user library bos-settings shows under
+Appearance > Library. If you kept wallpapers in the old
+`~/Pictures/Wallpapers` folder, add it to the list below or move the files.
 
 Override the list in `~/.config/breadpaper/config.toml`:
 
 ```toml
 library_dirs = [
-    "~/Pictures/Wallpapers",
+    "~/Pictures/Backgrounds",
     "/usr/share/backgrounds/bos",
 ]
 ```

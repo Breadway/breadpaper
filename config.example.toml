@@ -1,6 +1,8 @@
 # ~/.config/breadpaper/config.toml
 # Missing directories are skipped. An empty list uses the built-in defaults.
+# The user folder matches bos-settings: Appearance > Library scans the same
+# ~/Pictures/Backgrounds directory.
 library_dirs = [
-    "~/Pictures/Wallpapers",
+    "~/Pictures/Backgrounds",
     "/usr/share/backgrounds/bos",
 ]
