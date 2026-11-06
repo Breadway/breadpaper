@@ -2,8 +2,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-/// User library directory used when no config file is present.
-pub const DEFAULT_USER_LIBRARY: &str = "Pictures/Wallpapers";
+/// User library directory used when no config file is present. This is the
+/// same folder bos-settings' Appearance > Library scans, so the two apps show
+/// the same wallpaper collection.
+pub const DEFAULT_USER_LIBRARY: &str = "Pictures/Backgrounds";
 
 /// Packaged BOS backgrounds, scanned when the directory exists.
 pub const DEFAULT_SYSTEM_LIBRARY: &str = "/usr/share/backgrounds/bos";
@@ -137,11 +139,15 @@ mod tests {
     }
 
     #[test]
-    fn default_dirs_are_pictures_wallpapers_and_bos_backgrounds() {
+    fn default_dirs_are_pictures_backgrounds_and_bos_backgrounds() {
         let dirs = Config::default().library_dirs;
         assert!(
             dirs.iter().any(|d| d.ends_with(DEFAULT_USER_LIBRARY)),
             "missing ~/{DEFAULT_USER_LIBRARY} in {dirs:?}"
+        );
+        assert!(
+            dirs.iter().any(|d| d.ends_with("Pictures/Backgrounds")),
+            "the user library must match bos-settings: {dirs:?}"
         );
         assert!(
             dirs.iter().any(|d| d == Path::new(DEFAULT_SYSTEM_LIBRARY)),
@@ -153,8 +159,8 @@ mod tests {
     fn expand_tilde_prefix() {
         let home = bread_utils::xdg::home_dir();
         assert_eq!(
-            expand_tilde(PathBuf::from("~/Pictures/Wallpapers")),
-            home.join("Pictures/Wallpapers")
+            expand_tilde(PathBuf::from("~/Pictures/Backgrounds")),
+            home.join("Pictures/Backgrounds")
         );
         assert_eq!(expand_tilde(PathBuf::from("~")), home);
         let abs = PathBuf::from("/usr/share/backgrounds/bos");

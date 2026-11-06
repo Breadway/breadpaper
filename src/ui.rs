@@ -31,8 +31,16 @@ headerbar {\
   border-radius: 8px;\
 }\n\
 .wallpaper-tile:hover { background-color: alpha(@on-surface, 0.14); }\n\
-.wallpaper-tile.current { box-shadow: inset 0 0 0 2px @accent; }\n\
-.wallpaper-name { padding: 8px 10px; font-size: 12px; }\n\
+.wallpaper-tile.current {\
+  box-shadow: inset 0 0 0 2px @accent; background-color: alpha(@accent, 0.10);\
+}\n\
+.wallpaper-tile.applied { box-shadow: inset 0 0 0 3px @accent; }\n\
+.wallpaper-caption { padding: 6px 10px 8px 10px; }\n\
+.wallpaper-name { font-size: 12px; }\n\
+.wallpaper-badge {\
+  padding: 0 7px; border-radius: 999px; font-size: 10px; font-weight: 600;\
+  background-color: @accent; color: @on-accent;\
+}\n\
 ";
 
 thread_local! {
@@ -93,6 +101,11 @@ fn present(app: &Application, dirs: Vec<PathBuf>) {
     flow.set_row_spacing(12);
     flow.set_column_spacing(12);
     flow.set_halign(Align::Fill);
+    // The picker is a scrolling grid: rows must keep their natural height
+    // instead of being stretched to the viewport. Without this a single tile
+    // is allocated the whole window height (PAPER-19).
+    flow.set_valign(Align::Start);
+    flow.set_vexpand(false);
     flow.add_css_class("library-grid");
 
     let scrolled = ScrolledWindow::builder()
@@ -148,6 +161,106 @@ fn present(app: &Application, dirs: Vec<PathBuf>) {
         let reload = reload.clone();
         refresh.connect_clicked(move |_| reload());
     }
+
+    if std::env::var_os("BREADPAPER_UI_MEASURE").is_some() {
+        measure_and_exit(
+            window.clone(),
+            flow.clone(),
+            summary.clone(),
+            status.clone(),
+            empty.clone(),
+        );
+    }
+}
+
+/// Development hook for the headless layout check: print the header copy and
+/// the allocated window, tile and thumbnail sizes, then quit. Without
+/// `BREADPAPER_UI_MEASURE` this is dead code. See
+/// `ci/measure-library-window.sh`.
+fn measure_and_exit(
+    window: ApplicationWindow,
+    flow: FlowBox,
+    summary: Label,
+    status: Label,
+    empty: Label,
+) {
+    let click_first = std::env::var_os("BREADPAPER_UI_MEASURE_CLICK").is_some();
+    if click_first {
+        let flow = flow.clone();
+        gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(250), move || {
+            if let Some(button) = flow
+                .child_at_index(0)
+                .and_then(|wrapper| wrapper.downcast_ref::<FlowBoxChild>().cloned())
+                .and_then(|child| child.child())
+                .and_then(|widget| widget.downcast::<Button>().ok())
+            {
+                button.emit_clicked();
+            }
+        });
+    }
+    let delay = if click_first { 2200 } else { 700 };
+    gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(delay), move || {
+        let current = crate::get().ok();
+        println!("MEASURE summary={}", summary.text());
+        println!("MEASURE status={}", status.text());
+        println!("MEASURE empty={}", empty.text().replace('\n', " | "));
+        println!(
+            "MEASURE window={}x{} tiles={}",
+            window.width(),
+            window.height(),
+            flow.observe_children().n_items()
+        );
+        let mut i = 0;
+        while let Some(wrapper) = flow.child_at_index(i) {
+            if let Some(child) = wrapper.downcast_ref::<FlowBoxChild>() {
+                let button = child.child().and_then(|w| w.downcast::<Button>().ok());
+                let name = button
+                    .as_ref()
+                    .map(|b| b.widget_name().to_string())
+                    .unwrap_or_default();
+                let current_mark = match button
+                    .as_ref()
+                    .map(|b| b.has_css_class("current"))
+                    .unwrap_or(false)
+                {
+                    true => " current",
+                    false => "",
+                };
+                let badge_mark = match button
+                    .as_ref()
+                    .and_then(tile_badge)
+                    .map(|badge| badge.is_visible())
+                    .unwrap_or(false)
+                {
+                    true => " badge=visible",
+                    false => " badge=hidden",
+                };
+                println!(
+                    "MEASURE tile={i} box={}x{} button={}x{}{current_mark}{badge_mark} path={name}",
+                    child.width(),
+                    child.height(),
+                    button.as_ref().map(|b| b.width()).unwrap_or(0),
+                    button.as_ref().map(|b| b.height()).unwrap_or(0),
+                );
+                if let Some(button) = button
+                    && let Some(col) = button.child().and_then(|w| w.downcast::<GBox>().ok())
+                    && let Some(picture) =
+                        col.first_child().and_then(|w| w.downcast::<Picture>().ok())
+                {
+                    println!(
+                        "MEASURE picture={i} {}x{}",
+                        picture.width(),
+                        picture.height()
+                    );
+                }
+            }
+            i += 1;
+        }
+        if let Some(path) = current {
+            println!("MEASURE current={}", path.display());
+        }
+        std::process::exit(0);
+    });
 }
 
 fn fill_grid(flow: &FlowBox, papers: &[Wallpaper], status: &Label, host: &impl IsA<gtk4::Widget>) {
@@ -156,7 +269,7 @@ fn fill_grid(flow: &FlowBox, papers: &[Wallpaper], status: &Label, host: &impl I
     }
     let current = current_path_for(host);
     for paper in papers {
-        let is_current = current.as_deref() == Some(paper.path.as_path());
+        let is_current = is_current_path(current.as_deref(), &paper.path);
         flow.insert(&tile(paper, is_current, flow, status), -1);
     }
 }
@@ -179,6 +292,10 @@ fn target_output(widget: &impl IsA<gtk4::Widget>) -> Option<String> {
 fn tile(paper: &Wallpaper, is_current: bool, flow: &FlowBox, status: &Label) -> Button {
     let btn = Button::new();
     btn.add_css_class("wallpaper-tile");
+    // Keep the tile at its image-plus-label height even when the FlowBox
+    // allocates a taller cell for the row.
+    btn.set_valign(Align::Start);
+    btn.set_vexpand(false);
     btn.set_widget_name(&paper.path.to_string_lossy());
     btn.set_tooltip_text(Some(&paper.path.to_string_lossy()));
     if is_current {
@@ -186,14 +303,26 @@ fn tile(paper: &Wallpaper, is_current: bool, flow: &FlowBox, status: &Label) -> 
     }
 
     let col = GBox::new(Orientation::Vertical, 0);
+    col.set_valign(Align::Start);
+    col.set_vexpand(false);
     col.append(&thumbnail(&paper.path));
 
+    let caption = GBox::new(Orientation::Horizontal, 6);
+    caption.add_css_class("wallpaper-caption");
     let name = Label::new(Some(&paper.name));
     name.add_css_class("wallpaper-name");
     name.set_xalign(0.0);
+    name.set_hexpand(true);
     name.set_ellipsize(gtk4::pango::EllipsizeMode::End);
     name.set_max_width_chars(24);
-    col.append(&name);
+    caption.append(&name);
+
+    let badge = Label::new(Some("Current"));
+    badge.add_css_class("wallpaper-badge");
+    badge.set_valign(Align::Center);
+    badge.set_visible(is_current);
+    caption.append(&badge);
+    col.append(&caption);
     btn.set_child(Some(&col));
 
     let path = paper.path.clone();
@@ -230,6 +359,14 @@ fn tile(paper: &Wallpaper, is_current: bool, flow: &FlowBox, status: &Label) -> 
                         Some(name) => format!("Applied {pretty} on {name}"),
                         None => format!("Applied {pretty}"),
                     });
+                    // Brief, high-contrast confirmation on the tile itself,
+                    // so a click is visible even when it is already current.
+                    clicked.add_css_class("applied");
+                    let flash = clicked.clone();
+                    gtk4::glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(1100),
+                        move || flash.remove_css_class("applied"),
+                    );
                     mark_current(&flow, &path);
                 }
                 Ok(Err(e)) => status.set_text(&format!("{e:#}")),
@@ -249,11 +386,48 @@ fn thumbnail(path: &Path) -> Picture {
     picture.set_content_fit(ContentFit::Cover);
     picture.set_size_request(THUMB_W, THUMB_H);
     picture.set_can_shrink(true);
+    picture.set_valign(Align::Start);
+    picture.set_vexpand(false);
     picture.set_hexpand(true);
     picture
 }
 
+fn is_current_path(current: Option<&Path>, target: &Path) -> bool {
+    let Some(current) = current else {
+        return false;
+    };
+    if current == target {
+        return true;
+    }
+    match (current.canonicalize(), target.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+fn tile_badge(button: &Button) -> Option<Label> {
+    fn find_in(widget: &gtk4::Widget) -> Option<Label> {
+        let mut child = widget.first_child();
+        while let Some(widget) = child {
+            if let Some(label) = widget.downcast_ref::<Label>()
+                && label.has_css_class("wallpaper-badge")
+            {
+                return Some(label.clone());
+            }
+            if let Some(found) = find_in(&widget) {
+                return Some(found);
+            }
+            child = widget.next_sibling();
+        }
+        None
+    }
+    find_in(button.upcast_ref())
+}
+
 fn mark_current(flow: &FlowBox, current: &Path) {
+    let current = current
+        .canonicalize()
+        .unwrap_or_else(|_| current.to_path_buf());
     let current = current.to_string_lossy();
     let mut i = 0;
     while let Some(wrapper) = flow.child_at_index(i) {
@@ -262,39 +436,172 @@ fn mark_current(flow: &FlowBox, current: &Path) {
             .and_then(|c| c.child())
             .and_then(|w| w.downcast::<Button>().ok())
         {
-            if btn.widget_name() == current.as_ref() {
+            let is_current = btn.widget_name() == current.as_ref();
+            if is_current {
                 btn.add_css_class("current");
             } else {
                 btn.remove_css_class("current");
+            }
+            if let Some(badge) = tile_badge(&btn) {
+                badge.set_visible(is_current);
             }
         }
         i += 1;
     }
 }
 
+/// Human-facing folder name: no absolute home prefix, and the packaged BOS
+/// collection gets a plain-language label.
+fn friendly_dir(dir: &Path) -> String {
+    if dir == Path::new(crate::DEFAULT_SYSTEM_LIBRARY) {
+        return "System backgrounds".to_string();
+    }
+    match dir.strip_prefix(bread_utils::xdg::home_dir()) {
+        Ok(rest) if !rest.as_os_str().is_empty() => rest.display().to_string(),
+        _ => dir.display().to_string(),
+    }
+}
+
+fn join_human(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [a, b] => format!("{a} and {b}"),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+    }
+}
+
+fn existing_dirs(dirs: &[PathBuf]) -> Vec<String> {
+    dirs.iter()
+        .filter(|dir| dir.is_dir())
+        .map(|dir| friendly_dir(dir))
+        .collect()
+}
+
 fn dirs_summary(dirs: &[PathBuf], count: usize) -> String {
-    let listed = dirs
-        .iter()
-        .map(|d| {
-            if d.is_dir() {
-                d.display().to_string()
-            } else {
-                format!("{} (missing)", d.display())
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" · ");
-    format!("{count} wallpaper(s) · {listed}")
+    let found = existing_dirs(dirs);
+    let locations = join_human(&found);
+    let noun = if count == 1 {
+        "wallpaper"
+    } else {
+        "wallpapers"
+    };
+    match (count, found.is_empty()) {
+        (0, true) => "No wallpaper folders found yet.".to_string(),
+        (0, false) => format!("No wallpapers found in {locations}."),
+        (_, true) => format!("{count} {noun} found."),
+        _ => format!("{count} {noun} in {locations}."),
+    }
 }
 
 fn empty_message(dirs: &[PathBuf]) -> String {
-    let listed = dirs
-        .iter()
-        .map(|d| d.display().to_string())
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        "No wallpapers found.\nAdd png/jpg/webp/gif/bmp files under:\n{listed}\n\nOr set library_dirs in {}",
-        crate::config::Config::path().display()
-    )
+    let found = existing_dirs(dirs);
+    match found.is_empty() {
+        true => "No wallpaper folders yet.\n\
+             Add PNG, JPG, WebP, GIF or BMP images to Pictures/Backgrounds, \
+             then press Refresh.\n\n\
+             You can change the folders in breadpaper's config.toml."
+            .to_string(),
+        false => format!(
+            "No wallpapers in {} yet.\n\
+             Add PNG, JPG, WebP, GIF or BMP images, then press Refresh.\n\n\
+             You can change the folders in breadpaper's config.toml.",
+            join_human(&found)
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "breadpaper-ui-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn friendly_dir_shortens_home_and_labels_the_system_collection() {
+        let home = bread_utils::xdg::home_dir();
+        assert_eq!(
+            friendly_dir(&home.join(crate::DEFAULT_USER_LIBRARY)),
+            crate::DEFAULT_USER_LIBRARY
+        );
+        assert_eq!(
+            friendly_dir(Path::new(crate::DEFAULT_SYSTEM_LIBRARY)),
+            "System backgrounds"
+        );
+        assert_eq!(friendly_dir(Path::new("/opt/walls")), "/opt/walls");
+    }
+
+    #[test]
+    fn summary_names_a_single_wallpaper_without_developer_text() {
+        let dir = tmp_dir("summary-one");
+        let text = dirs_summary(std::slice::from_ref(&dir), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(text.starts_with("1 wallpaper in "), "{text}");
+        assert!(!text.contains("wallpaper(s)"), "{text}");
+        assert!(!text.contains("(missing)"), "{text}");
+    }
+
+    #[test]
+    fn summary_omits_missing_folders_and_absolute_home_paths() {
+        let dir = tmp_dir("summary-present");
+        let missing = PathBuf::from("/no/such/breadpaper-wallpapers");
+        let text = dirs_summary(&[dir.clone(), missing], 2);
+        let _ = std::fs::remove_dir_all(&dir);
+        let home = bread_utils::xdg::home_dir();
+        assert!(text.contains("2 wallpapers in "), "{text}");
+        assert!(!text.contains("/no/such"), "{text}");
+        assert!(!text.contains("(missing)"), "{text}");
+        assert!(
+            !text.contains(&home.to_string_lossy().to_string()),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn summary_handles_no_existing_folders() {
+        let text = dirs_summary(&[PathBuf::from("/no/such/breadpaper-wallpapers")], 0);
+        assert_eq!(text, "No wallpaper folders found yet.");
+        assert!(!text.contains("(missing)"));
+    }
+
+    #[test]
+    fn empty_message_is_friendly_and_omits_missing_folders() {
+        let dir = tmp_dir("empty-message");
+        let text = empty_message(&[dir.clone(), PathBuf::from("/no/such/breadpaper-wallpapers")]);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(text.contains("No wallpapers in "), "{text}");
+        assert!(text.contains("press Refresh"), "{text}");
+        assert!(!text.contains("/no/such"), "{text}");
+        assert!(!text.contains("(missing)"), "{text}");
+    }
+
+    #[test]
+    fn selected_state_matches_same_file_and_rejects_another() {
+        let dir = tmp_dir("selected");
+        let a = dir.join("a.png");
+        let b = dir.join("b.png");
+        std::fs::write(&a, b"a").unwrap();
+        std::fs::write(&b, b"b").unwrap();
+
+        assert!(is_current_path(Some(&a), &a));
+        assert!(!is_current_path(Some(&a), &b));
+        assert!(!is_current_path(None, &a));
+
+        let link = dir.join("link.png");
+        std::os::unix::fs::symlink(&a, &link).unwrap();
+        assert!(is_current_path(Some(&link), &a));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
